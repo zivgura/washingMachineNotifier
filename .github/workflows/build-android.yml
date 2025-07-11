@@ -1,0 +1,70 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'android-app/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'android-app/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        
+    - name: Grant execute permission for gradlew
+      run: chmod +x android-app/gradlew
+      
+    - name: Build APK
+      run: |
+        cd android-app
+        ./gradlew assembleDebug
+        
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: washing-machine-app
+        path: android-app/app/build/outputs/apk/debug/app-debug.apk
+        
+    - name: Create Release
+      if: github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: android-app/app/build/outputs/apk/debug/app-debug.apk
+        tag_name: v${{ github.run_number }}
+        name: Washing Machine Notifier v${{ github.run_number }}
+        body: |
+          ## Washing Machine Notification App
+          
+          ### What's New:
+          - Audio detection for washing machine completion
+          - Email notifications via Gmail SMTP
+          - Firebase Cloud Messaging support
+          
+          ### Installation:
+          1. Download the APK
+          2. Enable "Install from Unknown Sources" on your Android device
+          3. Install the APK
+          4. Grant microphone and notification permissions
+          
+          ### Features:
+          - Detects washing machine completion via audio analysis
+          - Sends notifications to your email
+          - Runs as a foreground service for continuous monitoring
+          
+          Built automatically from commit: ${{ github.sha }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
