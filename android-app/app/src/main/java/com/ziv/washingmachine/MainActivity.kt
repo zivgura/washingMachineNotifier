@@ -1,12 +1,17 @@
 package com.ziv.washingmachine
 
 import android.Manifest
+import android.animation.ObjectAnimator
+import android.animation.AnimatorSet
+import android.animation.ValueAnimator
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.widget.ImageView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -21,6 +26,9 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 
 class MainActivity : AppCompatActivity() {
+
+    private lateinit var micIcon: ImageView
+    private var micAnimator: ObjectAnimator? = null
 
     private val permissions = mutableListOf(
         Manifest.permission.RECORD_AUDIO
@@ -46,9 +54,13 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        micIcon = findViewById(R.id.micIcon)
         val serverStatusText = findViewById<TextView>(R.id.serverStatusText)
         val testServerButton = findViewById<Button>(R.id.testServerButton)
         val calibrationButton = findViewById<Button>(R.id.calibrationButton)
+
+        // Start microphone animation
+        startMicrophoneAnimation()
 
         // Test server connection button
         testServerButton.setOnClickListener {
@@ -81,6 +93,40 @@ class MainActivity : AppCompatActivity() {
 
         // Test server connection on startup
         testServerConnection()
+    }
+
+    private fun startMicrophoneAnimation() {
+        // Create a simple scale animation that pulses
+        micAnimator = ObjectAnimator.ofFloat(micIcon, "scaleX", 1.0f, 1.15f, 1.0f).apply {
+            duration = 1500L
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = AccelerateDecelerateInterpolator()
+        }
+
+        // Also animate scaleY
+        val scaleYAnimator = ObjectAnimator.ofFloat(micIcon, "scaleY", 1.0f, 1.15f, 1.0f).apply {
+            duration = 1500L
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = AccelerateDecelerateInterpolator()
+        }
+
+        // Start both animations
+        micAnimator?.start()
+        scaleYAnimator.start()
+    }
+
+    private fun stopMicrophoneAnimation() {
+        micAnimator?.cancel()
+        micAnimator = null
+        // Reset to original state
+        micIcon.scaleX = 1.0f
+        micIcon.scaleY = 1.0f
+        micIcon.alpha = 1.0f
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        stopMicrophoneAnimation()
     }
 
     private fun testServerConnection() {
