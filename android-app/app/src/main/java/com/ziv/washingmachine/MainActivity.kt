@@ -1,0 +1,142 @@
+package com.ziv.washingmachine
+
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import android.widget.Toast
+import com.google.firebase.messaging.FirebaseMessaging
+import android.util.Log
+import android.widget.TextView
+import android.widget.Button
+import kotlin.concurrent.thread
+import java.net.HttpURLConnection
+import java.net.URL
+import java.io.BufferedReader
+import java.io.InputStreamReader
+
+class MainActivity : AppCompatActivity() {
+
+    private val permissions = mutableListOf(
+        Manifest.permission.RECORD_AUDIO
+    ).apply {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }.toTypedArray()
+
+    private val requestPermissionsLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val denied = permissions.filterValues { !it }.keys
+        if (denied.isNotEmpty()) {
+            Toast.makeText(this, "Permissions denied: $denied", Toast.LENGTH_LONG).show()
+        } else {
+            Toast.makeText(this, "All permissions granted!", Toast.LENGTH_SHORT).show()
+            startAudioDetectionService()
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+
+        val tokenTextView = findViewById<TextView>(R.id.tokenText)
+        val serverStatusText = findViewById<TextView>(R.id.serverStatusText)
+        val testServerButton = findViewById<Button>(R.id.testServerButton)
+
+        // Get FCM token
+        FirebaseMessaging.getInstance().getToken().addOnCompleteListener { task ->
+            if (!task.isSuccessful) {
+                Log.w("FCM", "Fetching FCM registration token failed", task.exception)
+                tokenTextView.text = "Failed to get FCM token"
+                return@addOnCompleteListener
+            }
+            // Get new FCM registration token
+            val token = task.result
+            Log.d("FCM", "FCM Token: $token")
+            tokenTextView.text = token
+        }
+
+        // Test server connection button
+        testServerButton.setOnClickListener {
+            testServerConnection()
+        }
+
+        // Request permissions if not already granted
+        if (!hasAllPermissions()) {
+            requestPermissionsLauncher.launch(permissions)
+        } else {
+            startAudioDetectionService()
+        }
+
+        // Create notification channel for Android 8.0+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                "default_channel",
+                "Default Channel",
+                NotificationManager.IMPORTANCE_DEFAULT
+            )
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+        }
+
+        // Test server connection on startup
+        testServerConnection()
+    }
+
+    private fun testServerConnection() {
+        val serverStatusText = findViewById<TextView>(R.id.serverStatusText)
+        serverStatusText.text = "Server: Testing connection..."
+        
+        thread {
+            try {
+                val url = URL("http://192.168.1.119:3001/api/health")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
+                
+                val responseCode = connection.responseCode
+                val response = BufferedReader(InputStreamReader(connection.inputStream)).use { it.readText() }
+                connection.disconnect()
+                
+                runOnUiThread {
+                    if (responseCode == 200) {
+                        serverStatusText.text = "Server: Connected ✓"
+                        serverStatusText.setTextColor(resources.getColor(android.R.color.holo_green_dark, null))
+                    } else {
+                        serverStatusText.text = "Server: Error ($responseCode)"
+                        serverStatusText.setTextColor(resources.getColor(android.R.color.holo_red_dark, null))
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Server connection failed: ${e.message}")
+                runOnUiThread {
+                    serverStatusText.text = "Server: Disconnected ✗"
+                    serverStatusText.setTextColor(resources.getColor(android.R.color.holo_red_dark, null))
+                }
+            }
+        }
+    }
+
+    private fun hasAllPermissions(): Boolean =
+        permissions.all { perm ->
+            ContextCompat.checkSelfPermission(this, perm) == PackageManager.PERMISSION_GRANTED
+        }
+
+    // Start the audio detection service
+    private fun startAudioDetectionService() {
+        val serviceIntent = android.content.Intent(this, AudioDetectionService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
+    }
+}

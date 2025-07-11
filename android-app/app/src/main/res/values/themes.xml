@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.WashingMachine" parent="Theme.AppCompat.Light.DarkActionBar" >
+    <item name="colorPrimary">@color/purple_500</item>
+    </style>
+
+</resources>
