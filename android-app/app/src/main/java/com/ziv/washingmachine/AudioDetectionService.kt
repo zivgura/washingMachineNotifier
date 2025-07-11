@@ -52,7 +52,6 @@ class AudioDetectionService : Service() {
         startForeground(1, createNotification())
         loadAndAnalyzeReferenceSound()
         startAudioDetection()
-        registerDeviceWithServer()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -62,7 +61,6 @@ class AudioDetectionService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         stopAudioDetection()
-        unregisterDeviceFromServer()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -87,64 +85,23 @@ class AudioDetectionService : Service() {
             .build()
     }
 
-    private fun registerDeviceWithServer() {
-        thread {
-            try {
-                val fcmToken = getFCMToken()
-                if (fcmToken != null) {
-                    val response = sendToServer("/api/devices/register", JSONObject().apply {
-                        put("token", fcmToken)
-                        put("deviceInfo", JSONObject().apply {
-                            put("deviceId", deviceId)
-                            put("platform", "android")
-                            put("appVersion", "1.0.0")
-                        })
-                    })
-                    Log.d("AudioDetection", "Device registered with server: $response")
-                }
-            } catch (e: Exception) {
-                Log.e("AudioDetection", "Failed to register device with server: ${e.message}")
-            }
-        }
-    }
-
-    private fun unregisterDeviceFromServer() {
-        thread {
-            try {
-                val fcmToken = getFCMToken()
-                if (fcmToken != null) {
-                    val response = sendToServer("/api/devices/unregister", JSONObject().apply {
-                        put("token", fcmToken)
-                    })
-                    Log.d("AudioDetection", "Device unregistered from server: $response")
-                }
-            } catch (e: Exception) {
-                Log.e("AudioDetection", "Failed to unregister device from server: ${e.message}")
-            }
-        }
-    }
-
-    private fun getFCMToken(): String? {
-        // This would typically come from Firebase Messaging
-        // For now, we'll use a placeholder
-        return "fTn9bWBvSeujTlpDWMbCuy:APA91bGP15sG0HrD-LeNp4F-H2ge1iPP_OAhynwjSjx219_hyLMIq6pYxsFgLat1st7Uv8YJLMwJD3JyTdDSTNz1OhzIVa04UJIwHBD--QHKMJvl31CMpxk"
-    }
-
     private fun sendWashingMachineNotification() {
         thread {
             try {
-                val response = sendToServer("/api/notifications/washing-machine-done", JSONObject().apply {
+                val response = sendToServer("/api/notifications/washing-complete", JSONObject().apply {
                     put("detectedBy", deviceId)
+                    put("timestamp", System.currentTimeMillis())
+                    put("message", "Washing machine cycle completed")
                 })
                 Log.d("AudioDetection", "Washing machine notification sent: $response")
                 
                 Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(this@AudioDetectionService, "Notification sent to server!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@AudioDetectionService, "📧 Email notification sent!", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 Log.e("AudioDetection", "Failed to send washing machine notification: ${e.message}")
                 Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(this@AudioDetectionService, "Failed to send notification: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@AudioDetectionService, "❌ Failed to send notification: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -217,12 +174,12 @@ class AudioDetectionService : Service() {
             Log.d("AudioDetection", "Reference sequence set: $referenceSequence")
             Log.d("AudioDetection", "Reference sequence size: ${referenceSequence.size} windows")
             Handler(Looper.getMainLooper()).post {
-                Toast.makeText(this, "Reference sequence created successfully", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "✅ Reference sequence loaded successfully", Toast.LENGTH_LONG).show()
             }
         } catch (e: Exception) {
             Log.e("AudioDetection", "Failed to load or analyze reference sound: ${e.message}")
             Handler(Looper.getMainLooper()).post {
-                Toast.makeText(this, "Reference sound error: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "❌ Reference sound error: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -232,7 +189,7 @@ class AudioDetectionService : Service() {
             != PackageManager.PERMISSION_GRANTED) {
             Log.e("AudioDetection", "RECORD_AUDIO permission not granted!")
             Handler(Looper.getMainLooper()).post {
-                Toast.makeText(this, "Microphone permission not granted!", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "❌ Microphone permission not granted!", Toast.LENGTH_LONG).show()
             }
             return
         }
@@ -295,9 +252,9 @@ class AudioDetectionService : Service() {
                                     val now = System.currentTimeMillis()
                                     if (now - lastDetectionTime > detectionCooldownMs) {
                                         lastDetectionTime = now
-                                        Log.d("AudioDetection", "Tune detected! Sequence matches reference.")
+                                        Log.d("AudioDetection", "🎵 Tune detected! Sequence matches reference.")
                                         Handler(Looper.getMainLooper()).post {
-                                            Toast.makeText(this@AudioDetectionService, "Tune detected!", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(this@AudioDetectionService, "🎵 Washing machine tune detected!", Toast.LENGTH_LONG).show()
                                         }
                                         // Send notification to server
                                         sendWashingMachineNotification()

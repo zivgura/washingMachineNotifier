@@ -3,6 +3,7 @@ package com.ziv.washingmachine
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -10,7 +11,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import android.widget.Toast
-import com.google.firebase.messaging.FirebaseMessaging
 import android.util.Log
 import android.widget.TextView
 import android.widget.Button
@@ -46,26 +46,19 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        val tokenTextView = findViewById<TextView>(R.id.tokenText)
         val serverStatusText = findViewById<TextView>(R.id.serverStatusText)
         val testServerButton = findViewById<Button>(R.id.testServerButton)
-
-        // Get FCM token
-        FirebaseMessaging.getInstance().getToken().addOnCompleteListener { task ->
-            if (!task.isSuccessful) {
-                Log.w("FCM", "Fetching FCM registration token failed", task.exception)
-                tokenTextView.text = "Failed to get FCM token"
-                return@addOnCompleteListener
-            }
-            // Get new FCM registration token
-            val token = task.result
-            Log.d("FCM", "FCM Token: $token")
-            tokenTextView.text = token
-        }
+        val calibrationButton = findViewById<Button>(R.id.calibrationButton)
 
         // Test server connection button
         testServerButton.setOnClickListener {
             testServerConnection()
+        }
+
+        // Calibration button
+        calibrationButton.setOnClickListener {
+            val intent = Intent(this, CalibrationActivity::class.java)
+            startActivity(intent)
         }
 
         // Request permissions if not already granted
