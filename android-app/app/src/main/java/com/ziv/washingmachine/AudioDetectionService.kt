@@ -8,6 +8,7 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import kotlin.concurrent.thread
@@ -31,36 +32,66 @@ class AudioDetectionService : Service() {
     private var isDetecting = false
     private var detectionThread: Thread? = null
     private var lastDetectionTime = 0L
-    private val detectionCooldownMs = 5000L // 5 seconds
+    private val detectionCooldownMs = 10000L // 10 seconds (increased from 5)
     private var consecutiveMatches = 0
-    private val requiredConsecutiveMatches = 3
+    private val requiredConsecutiveMatches = 5 // Increased from 3 to be more strict
     private var referenceSequence: List<List<Double>> = emptyList()
-    private val liveSequence: ArrayDeque<List<Double>> by lazy { ArrayDeque<List<Double>>() }
+    
+    // WakeLock to keep CPU running when screen is off
+    private var wakeLock: PowerManager.WakeLock? = null
     
     // Audio analysis parameters
     private val sampleRate = 44100
     private val windowSize = 2048
     private val stepSize = windowSize / 2
     
-    // Server configuration
-    private val serverUrl = "http://192.168.1.119:3001" // Physical device server
+    // Server configuration - now uses dynamic settings
+    private fun getServerUrl(): String = SettingsActivity.getServerUrl(this)
     private val deviceId = "android_sensor_${System.currentTimeMillis()}"
+    
+    // Calibration settings
+    private var frequencyTolerance = 100.0
+    private var minMatchesPerWindow = 3
+    private var amplitudeThreshold = 140.0
 
     override fun onCreate() {
         super.onCreate()
+        
+        // Acquire WakeLock to keep CPU running when screen is off
+        acquireWakeLock()
+        
         createNotificationChannel()
         startForeground(1, createNotification())
+        loadCalibrationSettings()
         loadAndAnalyzeReferenceSound()
         startAudioDetection()
+        
+        // Log which server URL is being used
+        Log.d("AudioDetection", "Using server URL: ${getServerUrl()}")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Reload calibration settings in case they were updated
+        loadCalibrationSettings()
+        
+        // If service was killed and restarted, restart audio detection
+        if (!isDetecting) {
+            Log.d("AudioDetection", "Service restarted, restarting audio detection")
+            startAudioDetection()
+        }
+        
         return START_STICKY
+    }
+    
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        Log.d("AudioDetection", "App removed from recent tasks, but service continues running")
     }
 
     override fun onDestroy() {
         super.onDestroy()
         stopAudioDetection()
+        releaseWakeLock()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -71,7 +102,12 @@ class AudioDetectionService : Service() {
                 CHANNEL_ID,
                 "Audio Detection",
                 NotificationManager.IMPORTANCE_LOW
-            )
+            ).apply {
+                description = "Background service for washing machine detection"
+                setShowBadge(false)
+                enableLights(false)
+                enableVibration(false)
+            }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
         }
@@ -82,13 +118,21 @@ class AudioDetectionService : Service() {
             .setContentTitle("Washing Machine Listener")
             .setContentText("Listening for washing machine completion...")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setOngoing(true) // Make notification persistent
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
     }
 
     private fun sendWashingMachineNotification() {
         thread {
             try {
-                val response = sendToServer("/api/notifications/washing-complete", JSONObject().apply {
+                val serverUrl = getServerUrl()
+                
+                // Wake up the server first
+                wakeUpServer(serverUrl)
+                
+                val response = sendToServer("$serverUrl/api/notifications/washing-machine-done", JSONObject().apply {
                     put("detectedBy", deviceId)
                     put("timestamp", System.currentTimeMillis())
                     put("message", "Washing machine cycle completed")
@@ -106,9 +150,28 @@ class AudioDetectionService : Service() {
             }
         }
     }
+    
+    private fun wakeUpServer(serverUrl: String) {
+        try {
+            val url = URL("$serverUrl/api/health")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+            
+            val responseCode = connection.responseCode
+            val response = BufferedReader(InputStreamReader(connection.inputStream)).use { it.readText() }
+            connection.disconnect()
+            
+            Log.d("AudioDetection", "Server wake-up call successful: $responseCode - $response")
+        } catch (e: Exception) {
+            Log.w("AudioDetection", "Server wake-up call failed: ${e.message}")
+            // Don't throw here - we'll still try to send the notification
+        }
+    }
 
-    private fun sendToServer(endpoint: String, data: JSONObject): String {
-        val url = URL("$serverUrl$endpoint")
+    private fun sendToServer(fullUrl: String, data: JSONObject): String {
+        val url = URL(fullUrl)
         val connection = url.openConnection() as HttpURLConnection
         
         connection.requestMethod = "POST"
@@ -215,7 +278,7 @@ class AudioDetectionService : Service() {
                 val read = audioRecord.read(buffer, 0, buffer.size)
                 if (read > 0) {
                     val amplitude = buffer.take(read).map { it.toInt().absoluteValue }.average()
-                    if (amplitude > 500) { // Only analyze if there's enough sound
+                    if (amplitude > amplitudeThreshold) { // Use loaded amplitude threshold
                         // Use the same window size as reference analysis
                         val window = buffer.take(windowSize.coerceAtMost(read)).toShortArray()
                         if (window.size == windowSize) {
@@ -230,35 +293,58 @@ class AudioDetectionService : Service() {
                                 Log.d("AudioDetection", "Live audio: avg freq = $avgFreq Hz, avg amplitude = $avgAmplitude, max amplitude = $maxAmplitude, signature = $liveSignature")
                             }
                             
-                            Log.d("AudioDetection", "Reference: $referenceSequence, Live: $liveSignature")
-                            Log.d("AudioDetection", "Live signature: $liveSignature")
-                            liveSequence.addLast(liveSignature)
-                            if (liveSequence.size > referenceSequence.size) {
-                                liveSequence.removeFirst()
-                            }
-                            if (referenceSequence.isEmpty()) {
-                                Log.d("AudioDetection", "Reference sequence is empty, skipping detection.")
-                                continue
-                            }
-                            if (liveSequence.size == referenceSequence.size) {
-                                if (isSequenceMatch(
-                                        liveSequence.toList(),
-                                        referenceSequence,
-                                        toleranceHz = 100.0,
-                                        minMatchesPerWindow = 4,
-                                        requiredMatchingWindows = (referenceSequence.size * 0.7).toInt()
-                                    )
-                                ) {
-                                    val now = System.currentTimeMillis()
-                                    if (now - lastDetectionTime > detectionCooldownMs) {
-                                        lastDetectionTime = now
-                                        Log.d("AudioDetection", "🎵 Tune detected! Sequence matches reference.")
-                                        Handler(Looper.getMainLooper()).post {
-                                            Toast.makeText(this@AudioDetectionService, "🎵 Washing machine tune detected!", Toast.LENGTH_LONG).show()
+                            // Only proceed if we have significant frequencies (not just noise) and sufficient amplitude
+                            val avgAmplitude = window.map { it.toDouble().absoluteValue }.average()
+                            if (liveSignature.isNotEmpty() && liveSignature.any { it > 100 } && avgAmplitude > amplitudeThreshold * 0.5) { // Only frequencies above 100Hz and sufficient amplitude
+                                Log.d("AudioDetection", "Reference: $referenceSequence, Live: $liveSignature")
+                                Log.d("AudioDetection", "Live signature: $liveSignature")
+                                
+                                // Use simple single-window matching like calibration test
+                                if (referenceSequence.isNotEmpty()) {
+                                    val referenceWindow = referenceSequence.firstOrNull()
+                                    if (referenceWindow != null) {
+                                        val matches = referenceWindow.count { refFreq ->
+                                            liveSignature.any { liveFreq -> 
+                                                kotlin.math.abs(liveFreq - refFreq) < frequencyTolerance 
+                                            }
                                         }
-                                        // Send notification to server
-                                        sendWashingMachineNotification()
+                                        
+                                        val isMatch = matches >= minMatchesPerWindow
+                                        Log.d("AudioDetection", "Match test: $matches/${referenceWindow.size} frequencies matched (need $minMatchesPerWindow). Result: ${if (isMatch) "MATCH ✅" else "NO MATCH ❌"}")
+                                        
+                                        if (isMatch) {
+                                            consecutiveMatches++
+                                            Log.d("AudioDetection", "Consecutive matches: $consecutiveMatches/$requiredConsecutiveMatches")
+                                            
+                                            if (consecutiveMatches >= requiredConsecutiveMatches) {
+                                                val now = System.currentTimeMillis()
+                                                if (now - lastDetectionTime > detectionCooldownMs) {
+                                                    lastDetectionTime = now
+                                                    consecutiveMatches = 0 // Reset counter
+                                                    Log.d("AudioDetection", "🎵 Tune detected! Consecutive matches reached threshold.")
+                                                    Handler(Looper.getMainLooper()).post {
+                                                        Toast.makeText(this@AudioDetectionService, "🎵 Washing machine tune detected!", Toast.LENGTH_LONG).show()
+                                                    }
+                                                    // Send notification to server
+                                                    sendWashingMachineNotification()
+                                                } else {
+                                                    Log.d("AudioDetection", "Detection blocked by cooldown. Time since last: ${now - lastDetectionTime}ms")
+                                                }
+                                            }
+                                        } else {
+                                            // Reset consecutive matches if no match
+                                            if (consecutiveMatches > 0) {
+                                                Log.d("AudioDetection", "No match, resetting consecutive counter from $consecutiveMatches to 0")
+                                                consecutiveMatches = 0
+                                            }
+                                        }
                                     }
+                                }
+                            } else {
+                                // Reset consecutive matches for low-quality audio
+                                if (consecutiveMatches > 0) {
+                                    Log.d("AudioDetection", "Low-quality audio detected, resetting consecutive counter from $consecutiveMatches to 0")
+                                    consecutiveMatches = 0
                                 }
                             }
                         }
@@ -277,37 +363,45 @@ class AudioDetectionService : Service() {
         detectionThread?.join(500)
         detectionThread = null
     }
-
-    private fun isSignatureMatch(
-        live: List<Double>,
-        reference: List<Double>?,
-        toleranceHz: Double = 200.0,
-        minMatches: Int = 2
-    ): Boolean {
-        if (reference == null || live.isEmpty()) return false
-        val matches = reference.count { refFreq ->
-            live.any { liveFreq -> kotlin.math.abs(liveFreq - refFreq) < toleranceHz }
-        }
-        return matches >= minMatches // At least minMatches frequencies match
+    
+    private fun loadCalibrationSettings() {
+        val prefs = getSharedPreferences("calibration", MODE_PRIVATE)
+        frequencyTolerance = prefs.getFloat("frequency_tolerance", 100.0f).toDouble()
+        minMatchesPerWindow = prefs.getInt("min_matches", 3)
+        amplitudeThreshold = prefs.getFloat("amplitude_threshold", 140.0f).toDouble()
+        
+        Log.d("AudioDetection", "Loaded calibration settings: tolerance=$frequencyTolerance, minMatches=$minMatchesPerWindow, amplitude=$amplitudeThreshold")
     }
-
-    private fun isSequenceMatch(
-        live: List<List<Double>>,
-        reference: List<List<Double>>,
-        toleranceHz: Double = 100.0,
-        minMatchesPerWindow: Int = 4,
-        requiredMatchingWindows: Int = 3
-    ): Boolean {
-        if (live.size != reference.size) return false
-        var matchingWindows = 0
-        for (i in reference.indices) {
-            val refFreqs = reference[i]
-            val liveFreqs = live[i]
-            val matches = refFreqs.count { refFreq ->
-                liveFreqs.any { liveFreq -> kotlin.math.abs(liveFreq - refFreq) < toleranceHz }
+    
+    private fun acquireWakeLock() {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "WashingMachine::AudioDetectionWakeLock"
+        )
+        wakeLock?.acquire(10*60*1000L) // 10 minutes timeout
+        Log.d("AudioDetection", "WakeLock acquired")
+        
+        // Set up periodic renewal
+        Handler(Looper.getMainLooper()).postDelayed(object : Runnable {
+            override fun run() {
+                if (isDetecting && wakeLock?.isHeld == true) {
+                    // Renew WakeLock every 9 minutes
+                    wakeLock?.acquire(10*60*1000L)
+                    Log.d("AudioDetection", "WakeLock renewed")
+                    Handler(Looper.getMainLooper()).postDelayed(this, 9*60*1000L)
+                }
             }
-            if (matches >= minMatchesPerWindow) matchingWindows++
+        }, 9*60*1000L)
+    }
+    
+    private fun releaseWakeLock() {
+        wakeLock?.let {
+            if (it.isHeld) {
+                it.release()
+                Log.d("AudioDetection", "WakeLock released")
+            }
         }
-        return matchingWindows >= requiredMatchingWindows
+        wakeLock = null
     }
 } 

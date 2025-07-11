@@ -16,15 +16,24 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        
+        // Default server URL (production)
+        buildConfigField("String", "SERVER_URL", "\"https://washing-machine-server.onrender.com\"")
     }
 
     buildTypes {
+        debug {
+            // Development server URL for debug builds
+            buildConfigField("String", "SERVER_URL", "\"http://192.168.1.119:3001\"")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Production server URL for release builds
+            buildConfigField("String", "SERVER_URL", "\"https://washing-machine-server.onrender.com\"")
         }
     }
     compileOptions {
@@ -36,6 +45,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

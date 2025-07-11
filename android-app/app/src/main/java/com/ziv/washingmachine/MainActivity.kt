@@ -29,6 +29,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var micIcon: ImageView
     private var micAnimator: ObjectAnimator? = null
+    
+    // Server configuration - now uses dynamic settings
+    private fun getServerUrl(): String = SettingsActivity.getServerUrl(this)
 
     private val permissions = mutableListOf(
         Manifest.permission.RECORD_AUDIO
@@ -58,6 +61,7 @@ class MainActivity : AppCompatActivity() {
         val serverStatusText = findViewById<TextView>(R.id.serverStatusText)
         val testServerButton = findViewById<Button>(R.id.testServerButton)
         val calibrationButton = findViewById<Button>(R.id.calibrationButton)
+        val settingsButton = findViewById<Button>(R.id.settingsButton)
 
         // Start microphone animation
         startMicrophoneAnimation()
@@ -70,6 +74,12 @@ class MainActivity : AppCompatActivity() {
         // Calibration button
         calibrationButton.setOnClickListener {
             val intent = Intent(this, CalibrationActivity::class.java)
+            startActivity(intent)
+        }
+
+        // Settings button
+        settingsButton.setOnClickListener {
+            val intent = Intent(this, SettingsActivity::class.java)
             startActivity(intent)
         }
 
@@ -92,6 +102,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Test server connection on startup
+        testServerConnection()
+        
+        // Log which server URL is being used
+        Log.d("MainActivity", "Using server URL: ${getServerUrl()}")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Refresh server connection when returning from settings
         testServerConnection()
     }
 
@@ -131,15 +150,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun testServerConnection() {
         val serverStatusText = findViewById<TextView>(R.id.serverStatusText)
+        val serverUrl = getServerUrl()
         serverStatusText.text = "Server: Testing connection..."
         
         thread {
             try {
-                val url = URL("http://192.168.1.119:3001/api/health")
+                // Wake up the server first
+                wakeUpServer(serverUrl)
+                
+                val url = URL("$serverUrl/api/health")
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
-                connection.connectTimeout = 5000
-                connection.readTimeout = 5000
+                connection.connectTimeout = 10000
+                connection.readTimeout = 10000
                 
                 val responseCode = connection.responseCode
                 val response = BufferedReader(InputStreamReader(connection.inputStream)).use { it.readText() }
@@ -161,6 +184,25 @@ class MainActivity : AppCompatActivity() {
                     serverStatusText.setTextColor(resources.getColor(android.R.color.holo_red_dark, null))
                 }
             }
+        }
+    }
+    
+    private fun wakeUpServer(serverUrl: String) {
+        try {
+            val url = URL("$serverUrl/api/health")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+            
+            val responseCode = connection.responseCode
+            val response = BufferedReader(InputStreamReader(connection.inputStream)).use { it.readText() }
+            connection.disconnect()
+            
+            Log.d("MainActivity", "Server wake-up call successful: $responseCode - $response")
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Server wake-up call failed: ${e.message}")
+            // Don't throw here - we'll still try to test the connection
         }
     }
 

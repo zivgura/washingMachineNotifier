@@ -42,8 +42,8 @@ class CalibrationActivity : AppCompatActivity() {
     
     // Calibration values
     private var frequencyTolerance = 100.0
-    private var minMatches = 4
-    private var amplitudeThreshold = 500.0
+    private var minMatches = 3
+    private var amplitudeThreshold = 140.0
     
     // Reference data
     private var referenceSequence: List<List<Double>> = emptyList()
@@ -186,13 +186,21 @@ class CalibrationActivity : AppCompatActivity() {
         }
         buttonLayout.addView(testButton)
         
+        layout.addView(buttonLayout)
+        
+        // Save button on separate row
+        val saveButtonLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 16, 0, 0)
+        }
+        
         saveButton = Button(this).apply {
             text = "Save Settings"
             setOnClickListener { saveCalibrationSettings() }
         }
-        buttonLayout.addView(saveButton)
+        saveButtonLayout.addView(saveButton)
         
-        layout.addView(buttonLayout)
+        layout.addView(saveButtonLayout)
         
         return layout
     }

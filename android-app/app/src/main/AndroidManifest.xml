@@ -32,6 +32,10 @@
             android:name=".CalibrationActivity"
             android:exported="false"
             android:theme="@style/Theme.WashingMachine" />
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.WashingMachine" />
         <service
             android:name=".AudioDetectionService"
             android:exported="false"

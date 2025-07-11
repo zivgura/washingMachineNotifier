@@ -43,16 +43,28 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Test Server"
-            android:layout_marginEnd="8dp"
-            android:padding="12dp" />
+            android:layout_marginEnd="4dp"
+            android:padding="8dp"
+            android:textSize="12sp" />
 
         <Button
             android:id="@+id/calibrationButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="🔧 Calibrate"
-            android:layout_marginStart="8dp"
-            android:padding="12dp" />
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:padding="8dp"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/settingsButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="⚙️ Settings"
+            android:layout_marginStart="4dp"
+            android:padding="8dp"
+            android:textSize="12sp" />
 
     </LinearLayout>
 
