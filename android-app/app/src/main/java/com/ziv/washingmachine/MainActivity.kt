@@ -19,6 +19,7 @@ import android.widget.Toast
 import android.util.Log
 import android.widget.TextView
 import android.widget.Button
+import androidx.appcompat.app.AlertDialog
 import kotlin.concurrent.thread
 import java.net.HttpURLConnection
 import java.net.URL
@@ -62,6 +63,7 @@ class MainActivity : AppCompatActivity() {
         val testServerButton = findViewById<Button>(R.id.testServerButton)
         val calibrationButton = findViewById<Button>(R.id.calibrationButton)
         val settingsButton = findViewById<Button>(R.id.settingsButton)
+        val exitAppButton = findViewById<Button>(R.id.exitAppButton)
 
         // Start microphone animation
         startMicrophoneAnimation()
@@ -81,6 +83,11 @@ class MainActivity : AppCompatActivity() {
         settingsButton.setOnClickListener {
             val intent = Intent(this, SettingsActivity::class.java)
             startActivity(intent)
+        }
+
+        // Exit app button
+        exitAppButton.setOnClickListener {
+            showExitConfirmationDialog()
         }
 
         // Request permissions if not already granted
@@ -219,5 +226,32 @@ class MainActivity : AppCompatActivity() {
         } else {
             startService(serviceIntent)
         }
+    }
+
+    private fun showExitConfirmationDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Exit App")
+            .setMessage("This will stop the washing machine monitoring service and close the app completely. Are you sure?")
+            .setPositiveButton("Exit") { _, _ ->
+                exitApp()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun exitApp() {
+        // Stop the audio detection service
+        val serviceIntent = Intent(this, AudioDetectionService::class.java)
+        stopService(serviceIntent)
+        
+        // Stop animations
+        stopMicrophoneAnimation()
+        
+        // Show toast
+        Toast.makeText(this, "App closed. Service stopped.", Toast.LENGTH_SHORT).show()
+        
+        // Close the app
+        finishAffinity() // This closes all activities in the task
+        System.exit(0) // Force close the app process
     }
 }

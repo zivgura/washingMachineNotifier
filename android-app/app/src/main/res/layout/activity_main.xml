@@ -77,4 +77,15 @@
         android:textColor="#4CAF50"
         android:textAlignment="center" />
 
+    <Button
+        android:id="@+id/exitAppButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🚪 Exit App"
+        android:layout_marginTop="32dp"
+        android:padding="12dp"
+        android:textSize="14sp"
+        android:backgroundTint="#FF5722"
+        android:textColor="#FFFFFF" />
+
 </LinearLayout>
