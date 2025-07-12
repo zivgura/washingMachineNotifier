@@ -11,6 +11,10 @@ on:
       - 'android-app/**'
   workflow_dispatch:
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
