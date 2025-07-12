@@ -25,22 +25,16 @@
         android:fillColor="#424242"
         android:pathData="M20,88 L88,88 L88,96 L20,96 Z" />
     
-    <!-- Control Buttons -->
-    <circle
+    <!-- Control Buttons (converted from circles to paths) -->
+    <path
         android:fillColor="#FFFFFF"
-        android:cx="32"
-        android:cy="92"
-        android:r="2" />
-    <circle
+        android:pathData="M32,92 A2,2 0 0,1 34,94 A2,2 0 0,1 32,96 A2,2 0 0,1 30,94 A2,2 0 0,1 32,92 Z" />
+    <path
         android:fillColor="#FFFFFF"
-        android:cx="40"
-        android:cy="92"
-        android:r="2" />
-    <circle
+        android:pathData="M40,92 A2,2 0 0,1 42,94 A2,2 0 0,1 40,96 A2,2 0 0,1 38,94 A2,2 0 0,1 40,92 Z" />
+    <path
         android:fillColor="#FFFFFF"
-        android:cx="48"
-        android:cy="92"
-        android:r="2" />
+        android:pathData="M48,92 A2,2 0 0,1 50,94 A2,2 0 0,1 48,96 A2,2 0 0,1 46,94 A2,2 0 0,1 48,92 Z" />
     
     <!-- Notification Indicator (Sound Waves) -->
     <path
