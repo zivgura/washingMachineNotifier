@@ -15,6 +15,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import kotlin.concurrent.thread
 import kotlin.math.absoluteValue
+import kotlin.math.sqrt
 
 class CalibrationActivity : AppCompatActivity() {
     
@@ -34,6 +35,10 @@ class CalibrationActivity : AppCompatActivity() {
     private lateinit var amplitudeThresholdSlider: SeekBar
     private lateinit var amplitudeThresholdText: TextView
     
+    // Detection method selection
+    private lateinit var detectionMethodSpinner: Spinner
+    private lateinit var methodResultsText: TextView
+    
     private var isRecording = false
     private var recordingThread: Thread? = null
     private var audioRecord: AudioRecord? = null
@@ -44,169 +49,144 @@ class CalibrationActivity : AppCompatActivity() {
     private var frequencyTolerance = 100.0
     private var minMatches = 3
     private var amplitudeThreshold = 140.0
+    private var detectionMethod = "hybrid"
     
     // Reference data
     private var referenceSequence: List<List<Double>> = emptyList()
+    private var referenceAmplitudePattern: List<Double> = emptyList()
+    private var referenceSpectralProfile: List<Double> = emptyList()
+    private var referenceCrossCorrelation: List<Double> = emptyList()
     private var currentLiveSignature: List<Double> = emptyList()
     
+    // Detection results
+    private var fftResult = false
+    private var crossCorrelationResult = false
+    private var spectralResult = false
+    private var amplitudeResult = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(createCalibrationLayout())
+        setContentView(R.layout.activity_calibration)
         
         setupUI()
+        loadCalibrationSettings()
         loadReferenceSound()
-        
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) 
-            != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 1)
-        }
-    }
-    
-    private fun createCalibrationLayout(): LinearLayout {
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(32, 32, 32, 32)
-        }
-        
-        // Title
-        layout.addView(TextView(this).apply {
-            text = "🔧 Audio Detection Calibration"
-            textSize = 24f
-            setPadding(0, 0, 0, 32)
-        })
-        
-        // Status
-        statusText = TextView(this).apply {
-            text = "Status: Ready"
-            textSize = 16f
-        }
-        layout.addView(statusText)
-        
-        // Live audio info
-        amplitudeText = TextView(this).apply {
-            text = "Amplitude: --"
-            textSize = 14f
-        }
-        layout.addView(amplitudeText)
-        
-        frequencyText = TextView(this).apply {
-            text = "Frequencies: --"
-            textSize = 14f
-        }
-        layout.addView(frequencyText)
-        
-        // Calibration controls
-        layout.addView(TextView(this).apply {
-            text = "\n🎛️ Calibration Parameters"
-            textSize = 18f
-        })
-        
-        // Frequency tolerance
-        toleranceText = TextView(this).apply {
-            text = "Frequency Tolerance: ${frequencyTolerance.toInt()} Hz"
-        }
-        layout.addView(toleranceText)
-        
-        toleranceSlider = SeekBar(this).apply {
-            max = 500
-            progress = frequencyTolerance.toInt()
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    frequencyTolerance = progress.toDouble()
-                    toleranceText.text = "Frequency Tolerance: $progress Hz"
-                }
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-            })
-        }
-        layout.addView(toleranceSlider)
-        
-        // Minimum matches
-        minMatchesText = TextView(this).apply {
-            text = "Min Matches Per Window: $minMatches"
-        }
-        layout.addView(minMatchesText)
-        
-        minMatchesSlider = SeekBar(this).apply {
-            max = 10
-            progress = minMatches
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    minMatches = progress
-                    minMatchesText.text = "Min Matches Per Window: $progress"
-                }
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-            })
-        }
-        layout.addView(minMatchesSlider)
-        
-        // Amplitude threshold
-        amplitudeThresholdText = TextView(this).apply {
-            text = "Amplitude Threshold: ${amplitudeThreshold.toInt()}"
-        }
-        layout.addView(amplitudeThresholdText)
-        
-        amplitudeThresholdSlider = SeekBar(this).apply {
-            max = 2000
-            progress = amplitudeThreshold.toInt()
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    amplitudeThreshold = progress.toDouble()
-                    amplitudeThresholdText.text = "Amplitude Threshold: $progress"
-                }
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-            })
-        }
-        layout.addView(amplitudeThresholdSlider)
-        
-        // Buttons
-        val buttonLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 32, 0, 0)
-        }
-        
-        startButton = Button(this).apply {
-            text = "Start Listening"
-            setOnClickListener { startCalibration() }
-        }
-        buttonLayout.addView(startButton)
-        
-        stopButton = Button(this).apply {
-            text = "Stop"
-            setOnClickListener { stopCalibration() }
-            isEnabled = false
-        }
-        buttonLayout.addView(stopButton)
-        
-        testButton = Button(this).apply {
-            text = "Test Match"
-            setOnClickListener { testCurrentMatch() }
-        }
-        buttonLayout.addView(testButton)
-        
-        layout.addView(buttonLayout)
-        
-        // Save button on separate row
-        val saveButtonLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 16, 0, 0)
-        }
-        
-        saveButton = Button(this).apply {
-            text = "Save Settings"
-            setOnClickListener { saveCalibrationSettings() }
-        }
-        saveButtonLayout.addView(saveButton)
-        
-        layout.addView(saveButtonLayout)
-        
-        return layout
     }
     
     private fun setupUI() {
-        // UI is already set up in createCalibrationLayout()
+        statusText = findViewById(R.id.statusText)
+        amplitudeText = findViewById(R.id.amplitudeText)
+        frequencyText = findViewById(R.id.frequencyText)
+        startButton = findViewById(R.id.startButton)
+        stopButton = findViewById(R.id.stopButton)
+        testButton = findViewById(R.id.testButton)
+        saveButton = findViewById(R.id.saveButton)
+        
+        toleranceSlider = findViewById(R.id.toleranceSlider)
+        toleranceText = findViewById(R.id.toleranceText)
+        minMatchesSlider = findViewById(R.id.minMatchesSlider)
+        minMatchesText = findViewById(R.id.minMatchesText)
+        amplitudeThresholdSlider = findViewById(R.id.amplitudeThresholdSlider)
+        amplitudeThresholdText = findViewById(R.id.amplitudeThresholdText)
+        
+        detectionMethodSpinner = findViewById(R.id.detectionMethodSpinner)
+        methodResultsText = findViewById(R.id.methodResultsText)
+        
+        // Set up sliders
+        toleranceSlider.max = 200
+        toleranceSlider.progress = frequencyTolerance.toInt()
+        toleranceText.text = "Frequency Tolerance: ${frequencyTolerance.toInt()} Hz"
+        
+        minMatchesSlider.max = 10
+        minMatchesSlider.progress = minMatches
+        minMatchesText.text = "Min Matches: $minMatches"
+        
+        amplitudeThresholdSlider.max = 500
+        amplitudeThresholdSlider.progress = amplitudeThreshold.toInt()
+        amplitudeThresholdText.text = "Amplitude Threshold: ${amplitudeThreshold.toInt()}"
+        
+        // Set up detection method spinner
+        val methods = arrayOf("FFT Only", "Cross-Correlation", "Spectral", "Amplitude", "Hybrid")
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, methods)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        detectionMethodSpinner.adapter = adapter
+        
+        // Set initial selection based on current method
+        val methodIndex = when (detectionMethod) {
+            "fft" -> 0
+            "cross_correlation" -> 1
+            "spectral" -> 2
+            "amplitude" -> 3
+            "hybrid" -> 4
+            else -> 4
+        }
+        detectionMethodSpinner.setSelection(methodIndex)
+        
+        // Set up button listeners
+        startButton.setOnClickListener { startCalibration() }
+        stopButton.setOnClickListener { stopCalibration() }
+        testButton.setOnClickListener { testDetection() }
+        saveButton.setOnClickListener { saveSettings() }
+        
+        // Set up slider listeners
+        toleranceSlider.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                frequencyTolerance = progress.toDouble()
+                toleranceText.text = "Frequency Tolerance: $progress Hz"
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+        
+        minMatchesSlider.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                minMatches = progress
+                minMatchesText.text = "Min Matches: $progress"
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+        
+        amplitudeThresholdSlider.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                amplitudeThreshold = progress.toDouble()
+                amplitudeThresholdText.text = "Amplitude Threshold: $progress"
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+        
+        detectionMethodSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+                detectionMethod = when (position) {
+                    0 -> "fft"
+                    1 -> "cross_correlation"
+                    2 -> "spectral"
+                    3 -> "amplitude"
+                    4 -> "hybrid"
+                    else -> "hybrid"
+                }
+                updateMethodResults()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+        
+        stopButton.isEnabled = false
+    }
+    
+    private fun loadCalibrationSettings() {
+        val prefs = getSharedPreferences("calibration", MODE_PRIVATE)
+        frequencyTolerance = prefs.getFloat("frequency_tolerance", 100.0f).toDouble()
+        minMatches = prefs.getInt("min_matches", 3)
+        amplitudeThreshold = prefs.getFloat("amplitude_threshold", 140.0f).toDouble()
+        detectionMethod = prefs.getString("detection_method", "hybrid") ?: "hybrid"
+        
+        // Update UI
+        toleranceSlider.progress = frequencyTolerance.toInt()
+        minMatchesSlider.progress = minMatches
+        amplitudeThresholdSlider.progress = amplitudeThreshold.toInt()
+        
+        Log.d("Calibration", "Loaded settings: tolerance=$frequencyTolerance, minMatches=$minMatches, amplitude=$amplitudeThreshold, method=$detectionMethod")
     }
     
     private fun loadReferenceSound() {
@@ -224,23 +204,69 @@ class CalibrationActivity : AppCompatActivity() {
             }
             
             referenceSequence = freqLists
+            
+            // Analyze reference with multiple methods
+            referenceAmplitudePattern = analyzeAmplitudePattern(referencePcm)
+            referenceSpectralProfile = analyzeSpectralProfile(referencePcm)
+            referenceCrossCorrelation = createCrossCorrelationTemplate(referencePcm)
+            
             statusText.text = "Status: Reference loaded (${referenceSequence.size} windows)"
         } catch (e: Exception) {
             statusText.text = "Status: Error loading reference - ${e.message}"
         }
     }
     
+    private fun analyzeAmplitudePattern(pcm: ShortArray): List<Double> {
+        val pattern = mutableListOf<Double>()
+        val windowSize = 1024
+        var i = 0
+        while (i + windowSize <= pcm.size) {
+            val window = pcm.sliceArray(i until i + windowSize)
+            val rms = sqrt(window.map { it.toDouble() * it.toDouble() }.average())
+            pattern.add(rms)
+            i += windowSize / 2
+        }
+        return pattern
+    }
+    
+    private fun analyzeSpectralProfile(pcm: ShortArray): List<Double> {
+        val profile = mutableListOf<Double>()
+        val windowSize = 2048
+        var i = 0
+        while (i + windowSize <= pcm.size) {
+            val window = pcm.sliceArray(i until i + windowSize)
+            val fft = AudioUtils.computeFFT(window)
+            val spectralAvg = fft.take(fft.size / 4).average()
+            profile.add(spectralAvg)
+            i += windowSize / 2
+        }
+        return profile
+    }
+    
+    private fun createCrossCorrelationTemplate(pcm: ShortArray): List<Double> {
+        val template = mutableListOf<Double>()
+        val windowSize = 1024
+        var i = 0
+        while (i + windowSize <= pcm.size) {
+            val window = pcm.sliceArray(i until i + windowSize)
+            val maxVal = window.map { it.toDouble().absoluteValue }.maxOrNull() ?: 1.0
+            val normalized = window.map { it.toDouble() / maxVal }
+            template.addAll(normalized)
+            i += windowSize
+        }
+        return template
+    }
+    
     private fun startCalibration() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED) {
-            Toast.makeText(this, "Microphone permission required", Toast.LENGTH_LONG).show()
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 1)
             return
         }
         
         isRecording = true
         startButton.isEnabled = false
         stopButton.isEnabled = true
-        statusText.text = "Status: Listening..."
+        statusText.text = "Status: Recording..."
         
         recordingThread = thread {
             val bufferSize = AudioRecord.getMinBufferSize(
@@ -248,7 +274,6 @@ class CalibrationActivity : AppCompatActivity() {
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT
             )
-            
             audioRecord = AudioRecord(
                 MediaRecorder.AudioSource.MIC,
                 sampleRate,
@@ -256,7 +281,6 @@ class CalibrationActivity : AppCompatActivity() {
                 AudioFormat.ENCODING_PCM_16BIT,
                 bufferSize
             )
-            
             val buffer = ShortArray(bufferSize)
             audioRecord?.startRecording()
             
@@ -282,6 +306,9 @@ class CalibrationActivity : AppCompatActivity() {
                                     "${it.toInt()} Hz" 
                                 }
                                 frequencyText.text = "Frequencies: $freqText"
+                                
+                                // Test detection methods
+                                testDetectionMethods(window)
                             }
                         }
                     }
@@ -295,6 +322,118 @@ class CalibrationActivity : AppCompatActivity() {
         }
     }
     
+    private fun testDetectionMethods(window: ShortArray) {
+        // Test FFT method
+        fftResult = testFFTDetection(window)
+        
+        // Test Cross-correlation method
+        crossCorrelationResult = testCrossCorrelationDetection(window)
+        
+        // Test Spectral method
+        spectralResult = testSpectralDetection(window)
+        
+        // Test Amplitude method
+        amplitudeResult = testAmplitudeDetection(window)
+        
+        updateMethodResults()
+    }
+    
+    private fun testFFTDetection(window: ShortArray): Boolean {
+        if (referenceSequence.isEmpty()) return false
+        
+        val liveFft = AudioUtils.computeFFT(window)
+        val liveSignature = AudioUtils.getDominantFrequencies(liveFft, sampleRate)
+        
+        if (liveSignature.isEmpty()) return false
+        
+        val referenceWindow = referenceSequence.firstOrNull() ?: return false
+        val matches = referenceWindow.count { refFreq ->
+            liveSignature.any { liveFreq -> 
+                kotlin.math.abs(liveFreq - refFreq) < frequencyTolerance 
+            }
+        }
+        
+        return matches >= minMatches
+    }
+    
+    private fun testCrossCorrelationDetection(window: ShortArray): Boolean {
+        if (referenceCrossCorrelation.isEmpty()) return false
+        
+        val maxVal = window.map { it.toDouble().absoluteValue }.maxOrNull() ?: 1.0
+        val normalizedWindow = window.map { it.toDouble() / maxVal }
+        
+        val correlation = computeCrossCorrelation(normalizedWindow, referenceCrossCorrelation)
+        val maxCorrelation = correlation.maxOrNull() ?: 0.0
+        
+        return maxCorrelation > 0.7
+    }
+    
+    private fun testSpectralDetection(window: ShortArray): Boolean {
+        if (referenceSpectralProfile.isEmpty()) return false
+        
+        val fft = AudioUtils.computeFFT(window)
+        val spectralAvg = fft.take(fft.size / 4).average()
+        
+        val referenceAvg = referenceSpectralProfile.average()
+        val similarity = 1.0 - kotlin.math.abs(spectralAvg - referenceAvg) / referenceAvg
+        
+        return similarity > 0.6
+    }
+    
+    private fun testAmplitudeDetection(window: ShortArray): Boolean {
+        if (referenceAmplitudePattern.isEmpty()) return false
+        
+        val rms = sqrt(window.map { it.toDouble() * it.toDouble() }.average())
+        
+        val referenceAvg = referenceAmplitudePattern.average()
+        val similarity = 1.0 - kotlin.math.abs(rms - referenceAvg) / referenceAvg
+        
+        return similarity > 0.5
+    }
+    
+    private fun computeCrossCorrelation(signal1: List<Double>, signal2: List<Double>): List<Double> {
+        val result = mutableListOf<Double>()
+        val n1 = signal1.size
+        val n2 = signal2.size
+        
+        for (lag in -n1 + 1 until n2) {
+            var sum = 0.0
+            for (i in 0 until n1) {
+                val j = i + lag
+                if (j >= 0 && j < n2) {
+                    sum += signal1[i] * signal2[j]
+                }
+            }
+            result.add(sum)
+        }
+        
+        return result
+    }
+    
+    private fun updateMethodResults() {
+        val results = mutableListOf<String>()
+        
+        if (detectionMethod == "fft" || detectionMethod == "hybrid") {
+            results.add("FFT: ${if (fftResult) "✅" else "❌"}")
+        }
+        if (detectionMethod == "cross_correlation" || detectionMethod == "hybrid") {
+            results.add("Cross-Corr: ${if (crossCorrelationResult) "✅" else "❌"}")
+        }
+        if (detectionMethod == "spectral" || detectionMethod == "hybrid") {
+            results.add("Spectral: ${if (spectralResult) "✅" else "❌"}")
+        }
+        if (detectionMethod == "amplitude" || detectionMethod == "hybrid") {
+            results.add("Amplitude: ${if (amplitudeResult) "✅" else "❌"}")
+        }
+        
+        val overallResult = when (detectionMethod) {
+            "hybrid" -> results.count { it.contains("✅") } >= 2
+            else -> results.isNotEmpty() && results.all { it.contains("✅") }
+        }
+        
+        methodResultsText.text = "Results: ${results.joinToString(", ")}\nOverall: ${if (overallResult) "✅ MATCH" else "❌ NO MATCH"}"
+    }
+    
     private fun stopCalibration() {
         isRecording = false
         recordingThread?.join(1000)
@@ -305,55 +444,22 @@ class CalibrationActivity : AppCompatActivity() {
         statusText.text = "Status: Stopped"
     }
     
-    private fun testCurrentMatch() {
-        if (currentLiveSignature.isEmpty()) {
-            Toast.makeText(this, "No live audio data - start listening first", Toast.LENGTH_SHORT).show()
-            return
-        }
-        
-        if (referenceSequence.isEmpty()) {
-            Toast.makeText(this, "No reference data loaded", Toast.LENGTH_SHORT).show()
-            return
-        }
-        
-        // Test against first window of reference
-        val referenceWindow = referenceSequence.firstOrNull()
-        if (referenceWindow != null) {
-            val matches = referenceWindow.count { refFreq ->
-                currentLiveSignature.any { liveFreq -> 
-                    kotlin.math.abs(liveFreq - refFreq) < frequencyTolerance 
-                }
-            }
-            
-            val isMatch = matches >= minMatches
-            val message = "Match test: $matches/${referenceWindow.size} frequencies matched " +
-                         "(need $minMatches). Result: ${if (isMatch) "MATCH ✅" else "NO MATCH ❌"}"
-            
-            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-            statusText.text = "Status: $message"
-        }
+    private fun testDetection() {
+        // This button can be used for manual testing
+        statusText.text = "Status: Manual test triggered"
+        Toast.makeText(this, "Test detection triggered", Toast.LENGTH_SHORT).show()
     }
     
-    private fun saveCalibrationSettings() {
-        // Save to SharedPreferences
+    private fun saveSettings() {
         val prefs = getSharedPreferences("calibration", MODE_PRIVATE)
         prefs.edit().apply {
             putFloat("frequency_tolerance", frequencyTolerance.toFloat())
             putInt("min_matches", minMatches)
             putFloat("amplitude_threshold", amplitudeThreshold.toFloat())
-            apply()
-        }
+            putString("detection_method", detectionMethod)
+        }.apply()
         
-        Toast.makeText(this, "Calibration settings saved!", Toast.LENGTH_SHORT).show()
-        
-        // Log the settings for debugging
-        Log.d("Calibration", "Saved settings: tolerance=$frequencyTolerance, minMatches=$minMatches, amplitude=$amplitudeThreshold")
-    }
-    
-    override fun onDestroy() {
-        super.onDestroy()
-        if (isRecording) {
-            stopCalibration()
-        }
+        Toast.makeText(this, "Settings saved!", Toast.LENGTH_SHORT).show()
+        statusText.text = "Status: Settings saved"
     }
 } 

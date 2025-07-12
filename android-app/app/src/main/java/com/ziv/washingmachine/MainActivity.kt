@@ -19,7 +19,9 @@ import android.widget.Toast
 import android.util.Log
 import android.widget.TextView
 import android.widget.Button
+import android.widget.ImageButton
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.Toolbar
 import kotlin.concurrent.thread
 import java.net.HttpURLConnection
 import java.net.URL
@@ -58,12 +60,19 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        // Set up toolbar
+        val toolbar = findViewById<Toolbar>(R.id.toolbar)
+        setSupportActionBar(toolbar)
+        supportActionBar?.setDisplayHomeAsUpEnabled(false)
+        supportActionBar?.setDisplayShowHomeEnabled(false)
+        supportActionBar?.setDisplayShowTitleEnabled(true)
+
         micIcon = findViewById(R.id.micIcon)
         val serverStatusText = findViewById<TextView>(R.id.serverStatusText)
         val testServerButton = findViewById<Button>(R.id.testServerButton)
         val calibrationButton = findViewById<Button>(R.id.calibrationButton)
         val settingsButton = findViewById<Button>(R.id.settingsButton)
-        val exitAppButton = findViewById<Button>(R.id.exitAppButton)
+        val exitAppButton = findViewById<ImageButton>(R.id.exitAppButton)
 
         // Start microphone animation
         startMicrophoneAnimation()
