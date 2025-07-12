@@ -28,6 +28,13 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x android-app/gradlew
       
+    - name: Clean build cache
+      run: |
+        cd android-app
+        ./gradlew clean
+        rm -rf .gradle/
+        rm -rf app/build/
+        
     - name: Build APK
       run: |
         cd android-app
@@ -52,7 +59,7 @@ jobs:
           ### What's New:
           - Audio detection for washing machine completion
           - Email notifications via Gmail SMTP
-          - Firebase Cloud Messaging support
+          - Background operation with WakeLock support
           
           ### Installation:
           1. Download the APK
@@ -64,6 +71,8 @@ jobs:
           - Detects washing machine completion via audio analysis
           - Sends notifications to your email
           - Runs as a foreground service for continuous monitoring
+          - Server configuration settings (local/production/custom)
+          - Audio calibration tools
           
           Built automatically from commit: ${{ github.sha }}
       env:

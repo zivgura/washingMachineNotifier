@@ -362,8 +362,8 @@ class AudioDetectionService : Service() {
         isDetecting = false
         detectionThread?.join(500)
         detectionThread = null
-    }
     
+    }
     private fun loadCalibrationSettings() {
         val prefs = getSharedPreferences("calibration", MODE_PRIVATE)
         frequencyTolerance = prefs.getFloat("frequency_tolerance", 100.0f).toDouble()

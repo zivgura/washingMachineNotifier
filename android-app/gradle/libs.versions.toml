@@ -15,7 +15,6 @@ appcompat = "1.7.1"
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 commons-math3 = { module = "org.apache.commons:commons-math3", version.ref = "commonsMath3" }
-firebase-messaging-ktx = { module = "com.google.firebase:firebase-messaging-ktx" }
 jtransforms = { module = "com.github.wendykierp:JTransforms", version.ref = "jtransforms" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
@@ -35,5 +34,4 @@ androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version
 [plugins]
 android-application = { id = "com.android.application", version = "8.10.1" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version = "1.9.22" }
-google-services = { id = "com.google.gms.google-services", version = "4.4.1" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
