@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Washing Machine Body -->
+    <path
+        android:fillColor="#2196F3"
+        android:pathData="M20,20 L88,20 A8,8 0 0,1 96,28 L96,80 A8,8 0 0,1 88,88 L20,88 A8,8 0 0,1 12,80 L12,28 A8,8 0 0,1 20,20 Z" />
+    
+    <!-- Washing Machine Door -->
+    <path
+        android:fillColor="#1976D2"
+        android:pathData="M24,24 L84,24 A4,4 0 0,1 88,28 L88,76 A4,4 0 0,1 84,80 L24,80 A4,4 0 0,1 20,76 L20,28 A4,4 0 0,1 24,24 Z" />
+    
+    <!-- Door Handle -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M38,44 L70,44 A2,2 0 0,1 72,46 L72,58 A2,2 0 0,1 70,60 L38,60 A2,2 0 0,1 36,58 L36,46 A2,2 0 0,1 38,44 Z" />
+    
+    <!-- Control Panel -->
+    <path
+        android:fillColor="#424242"
+        android:pathData="M20,88 L88,88 L88,96 L20,96 Z" />
+    
+    <!-- Control Buttons -->
+    <circle
+        android:fillColor="#FFFFFF"
+        android:cx="32"
+        android:cy="92"
+        android:r="2" />
+    <circle
+        android:fillColor="#FFFFFF"
+        android:cx="40"
+        android:cy="92"
+        android:r="2" />
+    <circle
+        android:fillColor="#FFFFFF"
+        android:cx="48"
+        android:cy="92"
+        android:r="2" />
+    
+    <!-- Notification Indicator (Sound Waves) -->
+    <path
+        android:fillColor="#4CAF50"
+        android:pathData="M60,92 L62,90 L64,92 L66,90 L68,92 L70,90 L72,92 L74,90 L76,92 L78,90 L80,92 L82,90 L84,92 L86,90 L88,92" />
+    
+    <!-- Microphone Icon for Audio Detection -->
+    <path
+        android:fillColor="#FF9800"
+        android:pathData="M54,32 L54,44 A2,2 0 0,1 52,46 L52,50 A2,2 0 0,1 54,52 L54,56 A2,2 0 0,1 56,58 L52,58 A2,2 0 0,1 50,56 L50,52 A2,2 0 0,1 52,50 L52,46 A2,2 0 0,1 54,44 L54,32 Z" />
+    
+    <!-- Sound Wave Lines -->
+    <path
+        android:strokeColor="#4CAF50"
+        android:strokeWidth="1.5"
+        android:pathData="M58,32 L60,30 L62,32 L64,30 L66,32 L68,30 L70,32 L72,30 L74,32 L76,30 L78,32 L80,30 L82,32 L84,30 L86,32" />
+    
+    <!-- Email Notification Icon -->
+    <path
+        android:fillColor="#E91E63"
+        android:pathData="M88,16 L88,20 L20,20 L20,16 A2,2 0 0,1 22,14 L86,14 A2,2 0 0,1 88,16 Z" />
+    <path
+        android:fillColor="#E91E63"
+        android:pathData="M54,18 L86,18 L70,30 Z" />
+    
+</vector> 
