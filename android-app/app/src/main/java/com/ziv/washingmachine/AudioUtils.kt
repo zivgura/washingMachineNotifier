@@ -8,6 +8,8 @@ import kotlin.math.sqrt
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.PI
+import kotlin.math.max
+import kotlin.math.min
 import org.jtransforms.fft.DoubleFFT_1D
 import org.apache.commons.math3.complex.Complex
 import org.apache.commons.math3.transform.FastFourierTransformer
@@ -15,6 +17,13 @@ import org.apache.commons.math3.transform.DftNormalization
 import org.apache.commons.math3.transform.TransformType
 
 object AudioUtils {
+    // Audio fingerprinting parameters
+    private const val FINGERPRINT_WINDOW_SIZE = 2048
+    private const val FINGERPRINT_HOP_SIZE = 512
+    private const val FINGERPRINT_FREQ_BINS = 32
+    private const val FINGERPRINT_TIME_FRAMES = 30
+    private const val FINGERPRINT_MATCH_THRESHOLD = 0.85
+    
     // Load PCM data from a WAV file in res/raw
     fun loadWavResource(context: Context, resId: Int): ShortArray {
         val inputStream: InputStream = context.resources.openRawResource(resId)
@@ -61,6 +70,92 @@ object AudioUtils {
         return shortBuffer
     }
 
+    // Generate audio fingerprint from PCM data
+    fun generateAudioFingerprint(pcm: ShortArray, sampleRate: Int): AudioFingerprint {
+        val fingerprints = mutableListOf<DoubleArray>()
+        var offset = 0
+        
+        while (offset + FINGERPRINT_WINDOW_SIZE <= pcm.size && fingerprints.size < FINGERPRINT_TIME_FRAMES) {
+            val window = pcm.sliceArray(offset until offset + FINGERPRINT_WINDOW_SIZE)
+            val fft = computeFFT(window)
+            val fingerprint = extractFingerprintFromFFT(fft, sampleRate)
+            fingerprints.add(fingerprint)
+            offset += FINGERPRINT_HOP_SIZE
+        }
+        
+        return AudioFingerprint(fingerprints, sampleRate)
+    }
+    
+    // Extract fingerprint features from FFT
+    private fun extractFingerprintFromFFT(fft: DoubleArray, sampleRate: Int): DoubleArray {
+        val fingerprint = DoubleArray(FINGERPRINT_FREQ_BINS)
+        
+        // Group frequency bins into fingerprint bands
+        val binSize = fft.size / FINGERPRINT_FREQ_BINS
+        
+        for (i in 0 until FINGERPRINT_FREQ_BINS) {
+            val startBin = i * binSize
+            val endBin = minOf((i + 1) * binSize, fft.size)
+            
+            // Calculate energy in this frequency band
+            var energy = 0.0
+            for (j in startBin until endBin) {
+                energy += fft[j] * fft[j]
+            }
+            
+            // Convert to dB scale and normalize
+            fingerprint[i] = if (energy > 0) 10 * log10(energy) else -100.0
+        }
+        
+        return fingerprint
+    }
+    
+    // Compare two audio fingerprints
+    fun compareFingerprints(fingerprint1: AudioFingerprint, fingerprint2: AudioFingerprint): Double {
+        if (fingerprint1.fingerprints.isEmpty() || fingerprint2.fingerprints.isEmpty()) {
+            return 0.0
+        }
+        
+        var totalSimilarity = 0.0
+        var comparisons = 0
+        
+        // Compare each time frame
+        for (i in 0 until minOf(fingerprint1.fingerprints.size, fingerprint2.fingerprints.size)) {
+            val similarity = compareFingerprintFrame(fingerprint1.fingerprints[i], fingerprint2.fingerprints[i])
+            totalSimilarity += similarity
+            comparisons++
+        }
+        
+        return if (comparisons > 0) totalSimilarity / comparisons else 0.0
+    }
+    
+    // Compare individual fingerprint frames
+    private fun compareFingerprintFrame(frame1: DoubleArray, frame2: DoubleArray): Double {
+        if (frame1.size != frame2.size) return 0.0
+        
+        var sumSquaredDiff = 0.0
+        var maxDiff = 0.0
+        
+        for (i in frame1.indices) {
+            val diff = abs(frame1[i] - frame2[i])
+            sumSquaredDiff += diff * diff
+            maxDiff = max(maxDiff, diff)
+        }
+        
+        // Calculate similarity (0-1 scale)
+        val rmsDiff = sqrt(sumSquaredDiff / frame1.size)
+        val similarity = max(0.0, 1.0 - (rmsDiff / 100.0)) // Normalize by expected range
+        
+        return similarity
+    }
+    
+    // Check if audio matches fingerprint
+    fun audioMatchesFingerprint(livePcm: ShortArray, referenceFingerprint: AudioFingerprint, sampleRate: Int): Boolean {
+        val liveFingerprint = generateAudioFingerprint(livePcm, sampleRate)
+        val similarity = compareFingerprints(referenceFingerprint, liveFingerprint)
+        return similarity >= FINGERPRINT_MATCH_THRESHOLD
+    }
+    
     // Real FFT using JTransform (preferred)
     fun computeFFT(pcm: ShortArray): DoubleArray {
         return try {
@@ -135,4 +230,10 @@ object AudioUtils {
                 freq > 50.0 && freq < sampleRate / 2.2 
             }
     }
-} 
+}
+
+// Data class to hold audio fingerprint
+data class AudioFingerprint(
+    val fingerprints: List<DoubleArray>, // Time-frequency fingerprint frames
+    val sampleRate: Int
+) 

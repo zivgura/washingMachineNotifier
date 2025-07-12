@@ -36,10 +36,10 @@ class AudioDetectionService : Service() {
     private var isDetecting = false
     private var detectionThread: Thread? = null
     private var lastDetectionTime = 0L
-    private val detectionCooldownMs = 10000L // 10 seconds (increased from 5)
+    private val detectionCooldownMs = 10000L // 10 seconds
     private var consecutiveMatches = 0
-    private val requiredConsecutiveMatches = 5 // Increased from 3 to be more strict
-    private var referenceSequence: List<List<Double>> = emptyList()
+    private val requiredConsecutiveMatches = 3 // Reduced for fingerprinting
+    private var referenceFingerprint: AudioFingerprint? = null
     
     // WakeLock to keep CPU running when screen is off
     private var wakeLock: PowerManager.WakeLock? = null
@@ -54,20 +54,8 @@ class AudioDetectionService : Service() {
     private val deviceId = "android_sensor_${System.currentTimeMillis()}"
     
     // Calibration settings
-    private var frequencyTolerance = 100.0
-    private var minMatchesPerWindow = 3
     private var amplitudeThreshold = 140.0
-    
-    // Alternative detection methods
-    private var useCrossCorrelation = true
-    private var useSpectralSimilarity = true
-    private var useAmplitudePattern = true
-    private var detectionMethod = "hybrid" // "fft", "cross_correlation", "spectral", "amplitude", "hybrid"
-    
-    // Reference data for alternative methods
-    private var referenceAmplitudePattern: List<Double> = emptyList()
-    private var referenceSpectralProfile: List<Double> = emptyList()
-    private var referenceCrossCorrelation: List<Double> = emptyList()
+    private var fingerprintMatchThreshold = 0.85
 
     override fun onCreate() {
         super.onCreate()
@@ -142,6 +130,7 @@ class AudioDetectionService : Service() {
                     put("detectedBy", deviceId)
                     put("timestamp", System.currentTimeMillis())
                     put("message", "Washing machine cycle completed")
+                    put("detectionMethod", "audio_fingerprinting")
                 })
                 Log.d("AudioDetection", "Washing machine notification sent: $response")
                 
@@ -212,11 +201,12 @@ class AudioDetectionService : Service() {
                 Log.w("AudioDetection", "WARNING: Reference file has very low amplitude - may be silent or corrupted!")
             }
             
-            // Analyze reference using multiple methods
-            analyzeReferenceWithMultipleMethods(referencePcm)
+            // Generate audio fingerprint from reference sound
+            referenceFingerprint = AudioUtils.generateAudioFingerprint(referencePcm, sampleRate)
             
+            Log.d("AudioDetection", "Reference fingerprint generated: ${referenceFingerprint?.fingerprints?.size} frames")
             Handler(Looper.getMainLooper()).post {
-                Toast.makeText(this, "✅ Reference sequence loaded successfully", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "✅ Reference fingerprint loaded successfully", Toast.LENGTH_LONG).show()
             }
         } catch (e: Exception) {
             Log.e("AudioDetection", "Failed to load or analyze reference sound: ${e.message}")
@@ -224,79 +214,6 @@ class AudioDetectionService : Service() {
                 Toast.makeText(this, "❌ Reference sound error: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
-    }
-    
-    private fun analyzeReferenceWithMultipleMethods(referencePcm: ShortArray) {
-        // Method 1: Traditional FFT frequency analysis
-        val freqLists = mutableListOf<List<Double>>()
-        var i = 0
-        while (i + windowSize <= referencePcm.size) {
-            val window = referencePcm.sliceArray(i until i + windowSize)
-            val fft = AudioUtils.computeFFT(window)
-            val domFreqs = AudioUtils.getDominantFrequencies(fft, sampleRate = sampleRate)
-            freqLists.add(domFreqs)
-            i += stepSize
-        }
-        referenceSequence = freqLists
-        
-        // Method 2: Amplitude pattern analysis
-        referenceAmplitudePattern = analyzeAmplitudePattern(referencePcm)
-        
-        // Method 3: Spectral profile analysis
-        referenceSpectralProfile = analyzeSpectralProfile(referencePcm)
-        
-        // Method 4: Cross-correlation template
-        referenceCrossCorrelation = createCrossCorrelationTemplate(referencePcm)
-        
-        Log.d("AudioDetection", "Reference analysis complete:")
-        Log.d("AudioDetection", "- FFT windows: ${referenceSequence.size}")
-        Log.d("AudioDetection", "- Amplitude pattern length: ${referenceAmplitudePattern.size}")
-        Log.d("AudioDetection", "- Spectral profile length: ${referenceSpectralProfile.size}")
-        Log.d("AudioDetection", "- Cross-correlation template length: ${referenceCrossCorrelation.size}")
-    }
-    
-    private fun analyzeAmplitudePattern(pcm: ShortArray): List<Double> {
-        val pattern = mutableListOf<Double>()
-        val windowSize = 1024
-        var i = 0
-        while (i + windowSize <= pcm.size) {
-            val window = pcm.sliceArray(i until i + windowSize)
-            val rms = sqrt(window.map { it.toDouble() * it.toDouble() }.average())
-            pattern.add(rms)
-            i += windowSize / 2
-        }
-        return pattern
-    }
-    
-    private fun analyzeSpectralProfile(pcm: ShortArray): List<Double> {
-        val profile = mutableListOf<Double>()
-        val windowSize = 2048
-        var i = 0
-        while (i + windowSize <= pcm.size) {
-            val window = pcm.sliceArray(i until i + windowSize)
-            val fft = AudioUtils.computeFFT(window)
-            // Create a spectral profile by averaging frequency bins
-            val spectralAvg = fft.take(fft.size / 4).average() // Use first quarter of spectrum
-            profile.add(spectralAvg)
-            i += windowSize / 2
-        }
-        return profile
-    }
-    
-    private fun createCrossCorrelationTemplate(pcm: ShortArray): List<Double> {
-        // Create a template for cross-correlation matching
-        val template = mutableListOf<Double>()
-        val windowSize = 1024
-        var i = 0
-        while (i + windowSize <= pcm.size) {
-            val window = pcm.sliceArray(i until i + windowSize)
-            // Normalize the window
-            val maxVal = window.map { it.toDouble().absoluteValue }.maxOrNull() ?: 1.0
-            val normalized = window.map { it.toDouble() / maxVal }
-            template.addAll(normalized)
-            i += windowSize
-        }
-        return template
     }
 
     private fun startAudioDetection() {
@@ -331,60 +248,32 @@ class AudioDetectionService : Service() {
                 if (read > 0) {
                     val amplitude = buffer.take(read).map { it.toInt().absoluteValue }.average()
                     if (amplitude > amplitudeThreshold) {
-                        val window = buffer.take(windowSize.coerceAtMost(read)).toShortArray()
-                        if (window.size == windowSize) {
-                            // Try multiple detection methods
-                            val detectionResults = mutableListOf<Boolean>()
+                        // Use fingerprinting for detection
+                        val livePcm = buffer.take(read).toShortArray()
+                        val isMatch = detectWithFingerprinting(livePcm)
+                        
+                        if (isMatch) {
+                            consecutiveMatches++
+                            Log.d("AudioDetection", "Fingerprint match! Consecutive matches: $consecutiveMatches/$requiredConsecutiveMatches")
                             
-                            // Method 1: Traditional FFT frequency matching
-                            if (detectionMethod == "fft" || detectionMethod == "hybrid") {
-                                detectionResults.add(detectWithFFT(window))
-                            }
-                            
-                            // Method 2: Cross-correlation
-                            if (detectionMethod == "cross_correlation" || detectionMethod == "hybrid") {
-                                detectionResults.add(detectWithCrossCorrelation(window))
-                            }
-                            
-                            // Method 3: Spectral similarity
-                            if (detectionMethod == "spectral" || detectionMethod == "hybrid") {
-                                detectionResults.add(detectWithSpectralSimilarity(window))
-                            }
-                            
-                            // Method 4: Amplitude pattern matching
-                            if (detectionMethod == "amplitude" || detectionMethod == "hybrid") {
-                                detectionResults.add(detectWithAmplitudePattern(window))
-                            }
-                            
-                            // Combine results based on detection method
-                            val isMatch = when (detectionMethod) {
-                                "hybrid" -> detectionResults.count { it } >= 2 // At least 2 methods must agree
-                                else -> detectionResults.isNotEmpty() && detectionResults.all { it }
-                            }
-                            
-                            if (isMatch) {
-                                consecutiveMatches++
-                                Log.d("AudioDetection", "Consecutive matches: $consecutiveMatches/$requiredConsecutiveMatches")
-                                
-                                if (consecutiveMatches >= requiredConsecutiveMatches) {
-                                    val now = System.currentTimeMillis()
-                                    if (now - lastDetectionTime > detectionCooldownMs) {
-                                        lastDetectionTime = now
-                                        consecutiveMatches = 0
-                                        Log.d("AudioDetection", "🎵 Tune detected! Consecutive matches reached threshold.")
-                                        Handler(Looper.getMainLooper()).post {
-                                            Toast.makeText(this@AudioDetectionService, "🎵 Washing machine tune detected!", Toast.LENGTH_LONG).show()
-                                        }
-                                        sendWashingMachineNotification()
-                                    } else {
-                                        Log.d("AudioDetection", "Detection blocked by cooldown. Time since last: ${now - lastDetectionTime}ms")
-                                    }
-                                }
-                            } else {
-                                if (consecutiveMatches > 0) {
-                                    Log.d("AudioDetection", "No match, resetting consecutive counter from $consecutiveMatches to 0")
+                            if (consecutiveMatches >= requiredConsecutiveMatches) {
+                                val now = System.currentTimeMillis()
+                                if (now - lastDetectionTime > detectionCooldownMs) {
+                                    lastDetectionTime = now
                                     consecutiveMatches = 0
+                                    Log.d("AudioDetection", "🎵 Washing machine completion detected via fingerprinting!")
+                                    Handler(Looper.getMainLooper()).post {
+                                        Toast.makeText(this@AudioDetectionService, "🎵 Washing machine tune detected!", Toast.LENGTH_LONG).show()
+                                    }
+                                    sendWashingMachineNotification()
+                                } else {
+                                    Log.d("AudioDetection", "Detection blocked by cooldown. Time since last: ${now - lastDetectionTime}ms")
                                 }
+                            }
+                        } else {
+                            if (consecutiveMatches > 0) {
+                                Log.d("AudioDetection", "No fingerprint match, resetting consecutive counter from $consecutiveMatches to 0")
+                                consecutiveMatches = 0
                             }
                         }
                     }
@@ -397,88 +286,23 @@ class AudioDetectionService : Service() {
         }
     }
     
-    private fun detectWithFFT(window: ShortArray): Boolean {
-        if (referenceSequence.isEmpty()) return false
-        
-        val liveFft = AudioUtils.computeFFT(window)
-        val liveSignature = AudioUtils.getDominantFrequencies(liveFft, sampleRate = sampleRate)
-        
-        if (liveSignature.isEmpty()) return false
-        
-        val referenceWindow = referenceSequence.firstOrNull() ?: return false
-        val matches = referenceWindow.count { refFreq ->
-            liveSignature.any { liveFreq -> 
-                kotlin.math.abs(liveFreq - refFreq) < frequencyTolerance 
+    private fun detectWithFingerprinting(livePcm: ShortArray): Boolean {
+        return try {
+            val referenceFingerprint = referenceFingerprint
+            if (referenceFingerprint == null) {
+                Log.w("AudioDetection", "No reference fingerprint available")
+                return false
             }
+            
+            val similarity = AudioUtils.compareFingerprints(referenceFingerprint, AudioUtils.generateAudioFingerprint(livePcm, sampleRate))
+            val isMatch = similarity >= fingerprintMatchThreshold
+            
+            Log.d("AudioDetection", "Fingerprint similarity: $similarity (threshold: $fingerprintMatchThreshold). Result: ${if (isMatch) "MATCH ✅" else "NO MATCH ❌"}")
+            return isMatch
+        } catch (e: Exception) {
+            Log.e("AudioDetection", "Fingerprint detection error: ${e.message}")
+            return false
         }
-        
-        val isMatch = matches >= minMatchesPerWindow
-        Log.d("AudioDetection", "FFT detection: $matches/${referenceWindow.size} frequencies matched. Result: ${if (isMatch) "MATCH ✅" else "NO MATCH ❌"}")
-        return isMatch
-    }
-    
-    private fun detectWithCrossCorrelation(window: ShortArray): Boolean {
-        if (referenceCrossCorrelation.isEmpty()) return false
-        
-        // Normalize the live window
-        val maxVal = window.map { it.toDouble().absoluteValue }.maxOrNull() ?: 1.0
-        val normalizedWindow = window.map { it.toDouble() / maxVal }
-        
-        // Compute cross-correlation
-        val correlation = computeCrossCorrelation(normalizedWindow, referenceCrossCorrelation)
-        val maxCorrelation = correlation.maxOrNull() ?: 0.0
-        
-        val isMatch = maxCorrelation > 0.7 // Threshold for correlation
-        Log.d("AudioDetection", "Cross-correlation detection: max correlation = $maxCorrelation. Result: ${if (isMatch) "MATCH ✅" else "NO MATCH ❌"}")
-        return isMatch
-    }
-    
-    private fun detectWithSpectralSimilarity(window: ShortArray): Boolean {
-        if (referenceSpectralProfile.isEmpty()) return false
-        
-        val fft = AudioUtils.computeFFT(window)
-        val spectralAvg = fft.take(fft.size / 4).average()
-        
-        // Compare with reference spectral profile
-        val referenceAvg = referenceSpectralProfile.average()
-        val similarity = 1.0 - kotlin.math.abs(spectralAvg - referenceAvg) / referenceAvg
-        
-        val isMatch = similarity > 0.6 // Threshold for spectral similarity
-        Log.d("AudioDetection", "Spectral detection: similarity = $similarity. Result: ${if (isMatch) "MATCH ✅" else "NO MATCH ❌"}")
-        return isMatch
-    }
-    
-    private fun detectWithAmplitudePattern(window: ShortArray): Boolean {
-        if (referenceAmplitudePattern.isEmpty()) return false
-        
-        val rms = sqrt(window.map { it.toDouble() * it.toDouble() }.average())
-        
-        // Compare with reference amplitude pattern
-        val referenceAvg = referenceAmplitudePattern.average()
-        val similarity = 1.0 - kotlin.math.abs(rms - referenceAvg) / referenceAvg
-        
-        val isMatch = similarity > 0.5 // Threshold for amplitude similarity
-        Log.d("AudioDetection", "Amplitude detection: similarity = $similarity. Result: ${if (isMatch) "MATCH ✅" else "NO MATCH ❌"}")
-        return isMatch
-    }
-    
-    private fun computeCrossCorrelation(signal1: List<Double>, signal2: List<Double>): List<Double> {
-        val result = mutableListOf<Double>()
-        val n1 = signal1.size
-        val n2 = signal2.size
-        
-        for (lag in -n1 + 1 until n2) {
-            var sum = 0.0
-            for (i in 0 until n1) {
-                val j = i + lag
-                if (j >= 0 && j < n2) {
-                    sum += signal1[i] * signal2[j]
-                }
-            }
-            result.add(sum)
-        }
-        
-        return result
     }
 
     private fun stopAudioDetection() {
@@ -489,12 +313,10 @@ class AudioDetectionService : Service() {
     
     private fun loadCalibrationSettings() {
         val prefs = getSharedPreferences("calibration", MODE_PRIVATE)
-        frequencyTolerance = prefs.getFloat("frequency_tolerance", 100.0f).toDouble()
-        minMatchesPerWindow = prefs.getInt("min_matches", 3)
         amplitudeThreshold = prefs.getFloat("amplitude_threshold", 140.0f).toDouble()
-        detectionMethod = prefs.getString("detection_method", "hybrid") ?: "hybrid"
+        fingerprintMatchThreshold = prefs.getFloat("fingerprint_match_threshold", 0.85f).toDouble()
         
-        Log.d("AudioDetection", "Loaded calibration settings: tolerance=$frequencyTolerance, minMatches=$minMatchesPerWindow, amplitude=$amplitudeThreshold, method=$detectionMethod")
+        Log.d("AudioDetection", "Loaded calibration settings: amplitude=$amplitudeThreshold, fingerprintThreshold=$fingerprintMatchThreshold")
     }
     
     private fun acquireWakeLock() {

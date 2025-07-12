@@ -16,7 +16,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="🔧 Audio Detection Calibration"
+            android:text="🔧 Audio Fingerprinting Calibration"
             android:textSize="24sp"
             android:textStyle="bold"
             android:gravity="center"
@@ -48,88 +48,44 @@
             android:layout_marginBottom="4dp" />
 
         <TextView
-            android:id="@+id/frequencyText"
+            android:id="@+id/fingerprintText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Frequencies: --"
+            android:text="Reference fingerprint: --"
+            android:textSize="14sp"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/similarityText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Similarity: --"
             android:textSize="14sp"
             android:layout_marginBottom="16dp" />
 
-        <!-- Detection Method Selection -->
+        <!-- Fingerprint Threshold -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="🎯 Detection Method"
+            android:text="🎛️ Fingerprint Threshold"
             android:textSize="18sp"
             android:textStyle="bold"
             android:layout_marginBottom="8dp" />
 
-        <Spinner
-            android:id="@+id/detectionMethodSpinner"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp" />
-
         <TextView
-            android:id="@+id/methodResultsText"
+            android:id="@+id/thresholdText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Results: --"
-            android:textSize="14sp"
-            android:layout_marginBottom="16dp" />
-
-        <!-- Calibration Parameters -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="🎛️ Calibration Parameters"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="8dp" />
-
-        <!-- Frequency Tolerance -->
-        <TextView
-            android:id="@+id/toleranceText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Frequency Tolerance: 100 Hz"
+            android:text="Fingerprint Threshold: 0.85"
             android:textSize="14sp"
             android:layout_marginBottom="4dp" />
 
         <SeekBar
-            android:id="@+id/toleranceSlider"
+            android:id="@+id/thresholdSlider"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp" />
-
-        <!-- Minimum Matches -->
-        <TextView
-            android:id="@+id/minMatchesText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Min Matches: 3"
-            android:textSize="14sp"
-            android:layout_marginBottom="4dp" />
-
-        <SeekBar
-            android:id="@+id/minMatchesSlider"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp" />
-
-        <!-- Amplitude Threshold -->
-        <TextView
-            android:id="@+id/amplitudeThresholdText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Amplitude Threshold: 140"
-            android:textSize="14sp"
-            android:layout_marginBottom="4dp" />
-
-        <SeekBar
-            android:id="@+id/amplitudeThresholdSlider"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="85"
             android:layout_marginBottom="16dp" />
 
         <!-- Control Buttons -->
@@ -165,29 +121,12 @@
 
         </LinearLayout>
 
-        <LinearLayout
+        <Button
+            android:id="@+id/saveButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="16dp">
-
-            <Button
-                android:id="@+id/testButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Test Detection"
-                android:layout_marginEnd="4dp" />
-
-            <Button
-                android:id="@+id/saveButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Save Settings"
-                android:layout_marginStart="4dp" />
-
-        </LinearLayout>
+            android:text="Save Settings"
+            android:layout_marginBottom="16dp" />
 
         <!-- Instructions -->
         <TextView
@@ -201,7 +140,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="1. Select detection method from dropdown\n2. Adjust parameters with sliders\n3. Start listening and play washing machine sound\n4. Watch real-time results\n5. Save settings when satisfied"
+            android:text="1. Adjust fingerprint threshold with slider\n2. Start listening and play washing machine sound\n3. Watch real-time similarity score\n4. Green text = match detected\n5. Save settings when satisfied"
             android:textSize="12sp"
             android:layout_marginBottom="16dp" />
 
