@@ -16,7 +16,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="🔧 Audio Fingerprinting Calibration"
+            android:text="🔧 High-Quality Audio Fingerprinting Calibration"
             android:textSize="24sp"
             android:textStyle="bold"
             android:gravity="center"
@@ -51,7 +51,7 @@
             android:id="@+id/fingerprintText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Reference fingerprint: --"
+            android:text="Reference fingerprints: --"
             android:textSize="14sp"
             android:layout_marginBottom="4dp" />
 
@@ -62,6 +62,89 @@
             android:text="Similarity: --"
             android:textSize="14sp"
             android:layout_marginBottom="16dp" />
+
+        <!-- Enhanced Fingerprinting Controls -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="⚡ Fingerprinting Options"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="8dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="4dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Enhanced Mode (MFCC + Spectral Features)"
+                    android:textSize="14sp" />
+
+                <Switch
+                    android:id="@+id/enhancedModeSwitch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="4dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="High-Quality Mode (Multi-Source + Preprocessing)"
+                    android:textSize="14sp" />
+
+                <Switch
+                    android:id="@+id/highQualityModeSwitch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="8dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Adaptive Threshold"
+                    android:textSize="14sp" />
+
+                <Switch
+                    android:id="@+id/adaptiveThresholdSwitch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true" />
+
+            </LinearLayout>
+
+        </LinearLayout>
 
         <!-- Fingerprint Threshold -->
         <TextView
@@ -87,6 +170,33 @@
             android:max="100"
             android:progress="85"
             android:layout_marginBottom="16dp" />
+
+        <!-- Diagnostic Information -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📊 Diagnostic Information"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxHeight="200dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:id="@+id/diagnosticText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Loading diagnostic information..."
+                android:textSize="12sp"
+                android:fontFamily="monospace"
+                android:background="#f0f0f0"
+                android:padding="8dp" />
+
+        </ScrollView>
 
         <!-- Control Buttons -->
         <TextView
@@ -132,7 +242,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="📋 Instructions"
+            android:text="📋 High-Quality Calibration Instructions"
             android:textSize="18sp"
             android:textStyle="bold"
             android:layout_marginBottom="8dp" />
@@ -140,7 +250,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="1. Adjust fingerprint threshold with slider\n2. Start listening and play washing machine sound\n3. Watch real-time similarity score\n4. Green text = match detected\n5. Save settings when satisfied"
+            android:text="1. Enable High-Quality Mode for multi-source processing\n2. Enable Enhanced Mode for MFCC + spectral analysis\n3. Enable Adaptive Threshold for dynamic adjustment\n4. Adjust fingerprint threshold with slider\n5. Start listening and play washing machine sound\n6. Watch real-time similarity score and quality metrics\n7. Green text = match detected\n8. Save settings when satisfied\n\nHigh-Quality mode processes both WAV and M4A files for optimal fingerprint quality."
             android:textSize="12sp"
             android:layout_marginBottom="16dp" />
 

@@ -29,6 +29,7 @@ import kotlin.math.sqrt
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.PI
+import kotlin.math.abs
 
 class AudioDetectionService : Service() {
 
@@ -40,6 +41,8 @@ class AudioDetectionService : Service() {
     private var consecutiveMatches = 0
     private val requiredConsecutiveMatches = 3 // Reduced for fingerprinting
     private var referenceFingerprint: AudioFingerprint? = null
+    private var referenceEnhancedFingerprint: EnhancedAudioFingerprint? = null
+    private var referenceHighQualityFingerprint: EnhancedAudioFingerprint? = null
     
     // WakeLock to keep CPU running when screen is off
     private var wakeLock: PowerManager.WakeLock? = null
@@ -56,6 +59,13 @@ class AudioDetectionService : Service() {
     // Calibration settings
     private var amplitudeThreshold = 140.0
     private var fingerprintMatchThreshold = 0.85
+    
+    // Enhanced detection parameters
+    private var useEnhancedFingerprinting = true
+    private var useHighQualityFingerprinting = true
+    private var adaptiveThresholdEnabled = true
+    private val recentSimilarities = mutableListOf<Double>()
+    private val maxRecentSimilarities = 50
 
     override fun onCreate() {
         super.onCreate()
@@ -188,30 +198,94 @@ class AudioDetectionService : Service() {
 
     private fun loadAndAnalyzeReferenceSound() {
         try {
-            val referencePcm = AudioUtils.loadWavResource(this, R.raw.completion_sound)
-            Log.d("AudioDetection", "Reference PCM loaded: ${referencePcm.size} samples")
+            // Try to load multiple audio sources for better fingerprint quality
+            val audioSources = mutableListOf<Int>()
             
-            // Check if the reference file has any significant audio content
-            val maxAmplitude = referencePcm.maxOrNull()?.toDouble() ?: 0.0
-            val minAmplitude = referencePcm.minOrNull()?.toDouble() ?: 0.0
-            val avgAmplitude = referencePcm.map { it.toDouble().absoluteValue }.average()
-            Log.d("AudioDetection", "Reference file stats: max=$maxAmplitude, min=$minAmplitude, avg=$avgAmplitude")
-            
-            if (avgAmplitude < 100) {
-                Log.w("AudioDetection", "WARNING: Reference file has very low amplitude - may be silent or corrupted!")
+            // Add available audio resources
+            try {
+                audioSources.add(R.raw.completion_sound) // WAV file
+                Log.d("AudioDetection", "Added completion_sound.wav to audio sources")
+            } catch (e: Exception) {
+                Log.w("AudioDetection", "Could not add completion_sound.wav: ${e.message}")
             }
             
-            // Generate audio fingerprint from reference sound
-            referenceFingerprint = AudioUtils.generateAudioFingerprint(referencePcm, sampleRate)
+            try {
+                audioSources.add(R.raw.completion_tune) // M4A file
+                Log.d("AudioDetection", "Added completion_tune.m4a to audio sources")
+            } catch (e: Exception) {
+                Log.w("AudioDetection", "Could not add completion_tune.m4a: ${e.message}")
+            }
             
-            Log.d("AudioDetection", "Reference fingerprint generated: ${referenceFingerprint?.fingerprints?.size} frames")
+            if (audioSources.isEmpty()) {
+                throw IllegalStateException("No audio sources available")
+            }
+            
+            Log.d("AudioDetection", "Loading ${audioSources.size} audio sources for fingerprint generation")
+            
+            // Generate fingerprints from all available sources
+            if (useHighQualityFingerprinting && audioSources.size > 1) {
+                // Use high-quality fingerprinting with multiple sources
+                referenceHighQualityFingerprint = AudioUtils.generateHighQualityFingerprint(this, audioSources)
+                Log.d("AudioDetection", "Generated high-quality composite fingerprint from ${audioSources.size} sources")
+            } else {
+                // Fallback to single source
+                val referencePcm = AudioUtils.loadAudioResource(this, audioSources.first())
+                val preprocessedPcm = AudioUtils.preprocessAudioForFingerprinting(referencePcm, sampleRate)
+                
+                referenceFingerprint = AudioUtils.generateAudioFingerprint(preprocessedPcm, sampleRate)
+                referenceEnhancedFingerprint = AudioUtils.generateEnhancedAudioFingerprint(preprocessedPcm, sampleRate)
+                
+                Log.d("AudioDetection", "Generated fingerprints from single source: standard=${referenceFingerprint?.fingerprints?.size} frames, enhanced=${referenceEnhancedFingerprint?.fingerprints?.size} frames")
+            }
+            
+            // Log audio quality metrics
+            logAudioQualityMetrics(audioSources)
+            
             Handler(Looper.getMainLooper()).post {
-                Toast.makeText(this, "✅ Reference fingerprint loaded successfully", Toast.LENGTH_LONG).show()
+                val message = if (useHighQualityFingerprinting && audioSources.size > 1) {
+                    "✅ High-quality fingerprint loaded from ${audioSources.size} sources"
+                } else {
+                    "✅ Reference fingerprints loaded successfully"
+                }
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
             }
         } catch (e: Exception) {
             Log.e("AudioDetection", "Failed to load or analyze reference sound: ${e.message}")
             Handler(Looper.getMainLooper()).post {
                 Toast.makeText(this, "❌ Reference sound error: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    
+    // Log audio quality metrics for debugging
+    private fun logAudioQualityMetrics(audioSources: List<Int>) {
+        for (resId in audioSources) {
+            try {
+                val pcm = AudioUtils.loadAudioResource(this, resId)
+                val resourceName = resources.getResourceEntryName(resId)
+                
+                val maxAmplitude = pcm.maxOrNull()?.toDouble() ?: 0.0
+                val minAmplitude = pcm.minOrNull()?.toDouble() ?: 0.0
+                val avgAmplitude = pcm.map { it.toDouble().absoluteValue }.average()
+                val duration = pcm.size.toDouble() / sampleRate
+                
+                Log.d("AudioDetection", "Audio quality metrics for $resourceName:")
+                Log.d("AudioDetection", "  Duration: ${String.format("%.2f", duration)}s")
+                Log.d("AudioDetection", "  Max amplitude: $maxAmplitude")
+                Log.d("AudioDetection", "  Min amplitude: $minAmplitude")
+                Log.d("AudioDetection", "  Avg amplitude: $avgAmplitude")
+                Log.d("AudioDetection", "  Sample count: ${pcm.size}")
+                
+                if (avgAmplitude < 100) {
+                    Log.w("AudioDetection", "  WARNING: Low amplitude detected - may affect fingerprint quality")
+                }
+                
+                if (duration < 0.5) {
+                    Log.w("AudioDetection", "  WARNING: Short duration detected - may affect fingerprint quality")
+                }
+                
+            } catch (e: Exception) {
+                Log.e("AudioDetection", "Failed to analyze audio quality for resource $resId: ${e.message}")
             }
         }
     }
@@ -289,19 +363,112 @@ class AudioDetectionService : Service() {
     private fun detectWithFingerprinting(livePcm: ShortArray): Boolean {
         return try {
             val referenceFingerprint = referenceFingerprint
-            if (referenceFingerprint == null) {
-                Log.w("AudioDetection", "No reference fingerprint available")
+            val referenceEnhancedFingerprint = referenceEnhancedFingerprint
+            val referenceHighQualityFingerprint = referenceHighQualityFingerprint
+            
+            if (referenceFingerprint == null && referenceEnhancedFingerprint == null && referenceHighQualityFingerprint == null) {
+                Log.w("AudioDetection", "No reference fingerprints available")
                 return false
             }
             
-            val similarity = AudioUtils.compareFingerprints(referenceFingerprint, AudioUtils.generateAudioFingerprint(livePcm, sampleRate))
-            val isMatch = similarity >= fingerprintMatchThreshold
+            var similarity = 0.0
+            var quality = 0.0
+            var detectionMethod = ""
+            var comparisonResult: FingerprintComparisonResult? = null
             
-            Log.d("AudioDetection", "Fingerprint similarity: $similarity (threshold: $fingerprintMatchThreshold). Result: ${if (isMatch) "MATCH ✅" else "NO MATCH ❌"}")
+            // Preprocess live audio for better quality
+            val preprocessedLivePcm = AudioUtils.preprocessAudioForFingerprinting(livePcm, sampleRate)
+            
+            if (useHighQualityFingerprinting && referenceHighQualityFingerprint != null) {
+                // Use high-quality fingerprinting with quality assessment
+                val liveEnhancedFingerprint = AudioUtils.generateEnhancedAudioFingerprint(preprocessedLivePcm, sampleRate)
+                comparisonResult = AudioUtils.compareFingerprintsWithQuality(referenceHighQualityFingerprint, liveEnhancedFingerprint)
+                similarity = comparisonResult.similarity
+                quality = comparisonResult.quality
+                detectionMethod = "High-Quality"
+            } else if (useEnhancedFingerprinting && referenceEnhancedFingerprint != null) {
+                // Use enhanced fingerprinting with multiple features
+                val liveEnhancedFingerprint = AudioUtils.generateEnhancedAudioFingerprint(preprocessedLivePcm, sampleRate)
+                similarity = AudioUtils.compareEnhancedFingerprints(referenceEnhancedFingerprint, liveEnhancedFingerprint)
+                detectionMethod = "Enhanced"
+            } else {
+                // Fallback to standard fingerprinting
+                val liveFingerprint = AudioUtils.generateAudioFingerprint(preprocessedLivePcm, sampleRate)
+                similarity = AudioUtils.compareFingerprints(referenceFingerprint!!, liveFingerprint)
+                detectionMethod = "Standard"
+            }
+            
+            // Update recent similarities for adaptive threshold
+            recentSimilarities.add(similarity)
+            if (recentSimilarities.size > maxRecentSimilarities) {
+                recentSimilarities.removeAt(0)
+            }
+            
+            // Calculate adaptive threshold if enabled
+            val currentThreshold = if (adaptiveThresholdEnabled && recentSimilarities.size >= 10) {
+                AudioUtils.calculateAdaptiveThreshold(recentSimilarities)
+            } else {
+                fingerprintMatchThreshold
+            }
+            
+            val isMatch = similarity >= currentThreshold
+            
+            Log.d("AudioDetection", "$detectionMethod fingerprint similarity: $similarity (threshold: $currentThreshold, quality: ${String.format("%.3f", quality)}). Result: ${if (isMatch) "MATCH ✅" else "NO MATCH ❌"}")
+            
+            // Log additional diagnostic information
+            if (useHighQualityFingerprinting && referenceHighQualityFingerprint != null) {
+                val liveEnhancedFingerprint = AudioUtils.generateEnhancedAudioFingerprint(preprocessedLivePcm, sampleRate)
+                logHighQualityFingerprintDiagnostics(referenceHighQualityFingerprint, liveEnhancedFingerprint, comparisonResult)
+            } else if (useEnhancedFingerprinting && referenceEnhancedFingerprint != null) {
+                val liveEnhancedFingerprint = AudioUtils.generateEnhancedAudioFingerprint(preprocessedLivePcm, sampleRate)
+                logEnhancedFingerprintDiagnostics(referenceEnhancedFingerprint, liveEnhancedFingerprint)
+            }
+            
             return isMatch
         } catch (e: Exception) {
             Log.e("AudioDetection", "Fingerprint detection error: ${e.message}")
             return false
+        }
+    }
+    
+    // Enhanced diagnostic logging for high-quality fingerprinting
+    private fun logHighQualityFingerprintDiagnostics(reference: EnhancedAudioFingerprint, live: EnhancedAudioFingerprint, comparisonResult: FingerprintComparisonResult?) {
+        if (reference.fingerprints.isNotEmpty() && live.fingerprints.isNotEmpty()) {
+            val refFrame = reference.fingerprints[0]
+            val liveFrame = live.fingerprints[0]
+            
+            Log.d("AudioDetection", "High-quality fingerprint diagnostics:")
+            Log.d("AudioDetection", "  Spectral Centroid: ref=${String.format("%.1f", refFrame.spectralCentroid)}Hz, live=${String.format("%.1f", liveFrame.spectralCentroid)}Hz")
+            Log.d("AudioDetection", "  Spectral Rolloff: ref=${String.format("%.1f", refFrame.spectralRolloff)}Hz, live=${String.format("%.1f", liveFrame.spectralRolloff)}Hz")
+            Log.d("AudioDetection", "  Spectral Flux: ref=${String.format("%.3f", refFrame.spectralFlux)}, live=${String.format("%.3f", liveFrame.spectralFlux)}")
+            
+            // Log energy band differences
+            val energyDiff = refFrame.energyBands.zip(liveFrame.energyBands).map { (ref, live) -> abs(ref - live) }.average()
+            Log.d("AudioDetection", "  Average energy band difference: ${String.format("%.2f", energyDiff)} dB")
+            
+            // Log quality metrics
+            comparisonResult?.let { result ->
+                Log.d("AudioDetection", "  Similarity Score: ${String.format("%.3f", result.similarity)}")
+                Log.d("AudioDetection", "  Quality Score: ${String.format("%.3f", result.quality)}")
+                Log.d("AudioDetection", "  Match Confidence: ${if (result.quality > 0.8) "HIGH" else if (result.quality > 0.6) "MEDIUM" else "LOW"}")
+            }
+        }
+    }
+    
+    // Enhanced diagnostic logging for better debugging
+    private fun logEnhancedFingerprintDiagnostics(reference: EnhancedAudioFingerprint, live: EnhancedAudioFingerprint) {
+        if (reference.fingerprints.isNotEmpty() && live.fingerprints.isNotEmpty()) {
+            val refFrame = reference.fingerprints[0]
+            val liveFrame = live.fingerprints[0]
+            
+            Log.d("AudioDetection", "Enhanced fingerprint diagnostics:")
+            Log.d("AudioDetection", "  Spectral Centroid: ref=${String.format("%.1f", refFrame.spectralCentroid)}Hz, live=${String.format("%.1f", liveFrame.spectralCentroid)}Hz")
+            Log.d("AudioDetection", "  Spectral Rolloff: ref=${String.format("%.1f", refFrame.spectralRolloff)}Hz, live=${String.format("%.1f", liveFrame.spectralRolloff)}Hz")
+            Log.d("AudioDetection", "  Spectral Flux: ref=${String.format("%.3f", refFrame.spectralFlux)}, live=${String.format("%.3f", liveFrame.spectralFlux)}")
+            
+            // Log energy band differences
+            val energyDiff = refFrame.energyBands.zip(liveFrame.energyBands).map { (ref, live) -> abs(ref - live) }.average()
+            Log.d("AudioDetection", "  Average energy band difference: ${String.format("%.2f", energyDiff)} dB")
         }
     }
 
@@ -315,8 +482,11 @@ class AudioDetectionService : Service() {
         val prefs = getSharedPreferences("calibration", MODE_PRIVATE)
         amplitudeThreshold = prefs.getFloat("amplitude_threshold", 140.0f).toDouble()
         fingerprintMatchThreshold = prefs.getFloat("fingerprint_match_threshold", 0.85f).toDouble()
+        useEnhancedFingerprinting = prefs.getBoolean("use_enhanced_fingerprinting", true)
+        useHighQualityFingerprinting = prefs.getBoolean("use_high_quality_fingerprinting", true)
+        adaptiveThresholdEnabled = prefs.getBoolean("adaptive_threshold_enabled", true)
         
-        Log.d("AudioDetection", "Loaded calibration settings: amplitude=$amplitudeThreshold, fingerprintThreshold=$fingerprintMatchThreshold")
+        Log.d("AudioDetection", "Loaded calibration settings: amplitude=$amplitudeThreshold, fingerprintThreshold=$fingerprintMatchThreshold, enhanced=$useEnhancedFingerprinting, highQuality=$useHighQualityFingerprinting, adaptive=$adaptiveThresholdEnabled")
     }
     
     private fun acquireWakeLock() {
