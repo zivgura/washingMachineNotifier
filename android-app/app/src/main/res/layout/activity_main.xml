@@ -38,12 +38,15 @@
         android:gravity="center"
         android:padding="32dp">
 
-        <ImageView
-            android:id="@+id/micIcon"
-            android:layout_width="80dp"
-            android:layout_height="80dp"
-            android:src="@drawable/microphone_icon"
-            android:contentDescription="Microphone Icon" />
+        <com.ziv.washingmachine.WaveformView
+            android:id="@+id/waveformView"
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:background="#f0f0f0"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            android:layerType="hardware"
+            android:hardwareAccelerated="true" />
 
         <TextView
             android:layout_width="wrap_content"

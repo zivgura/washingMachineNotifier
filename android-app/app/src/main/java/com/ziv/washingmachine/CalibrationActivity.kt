@@ -33,6 +33,7 @@ class CalibrationActivity : AppCompatActivity() {
     private lateinit var highQualityModeSwitch: android.widget.Switch
     private lateinit var adaptiveThresholdSwitch: android.widget.Switch
     private lateinit var diagnosticText: TextView
+    private lateinit var waveformView: WaveformView
     
     private var isListening = false
     private var audioRecord: AudioRecord? = null
@@ -69,9 +70,13 @@ class CalibrationActivity : AppCompatActivity() {
         highQualityModeSwitch = findViewById(R.id.highQualityModeSwitch)
         adaptiveThresholdSwitch = findViewById(R.id.adaptiveThresholdSwitch)
         diagnosticText = findViewById(R.id.diagnosticText)
+        waveformView = findViewById(R.id.waveformView)
         
         // Load reference fingerprints
         loadReferenceFingerprints()
+        
+        // Load reference waveform
+        loadReferenceWaveform()
         
         // Load current settings
         val prefs = getSharedPreferences("calibration", MODE_PRIVATE)
@@ -207,6 +212,18 @@ class CalibrationActivity : AppCompatActivity() {
         }
     }
     
+    private fun loadReferenceWaveform() {
+        try {
+            // Load only completion_tune.m4a as the reference waveform
+            val m4aPcm = AudioUtils.loadAudioResource(this, R.raw.completion_tune)
+            waveformView.setReferenceWaveform(m4aPcm)
+            Log.d("Calibration", "Reference waveform loaded from completion_tune.m4a")
+        } catch (e: Exception) {
+            Log.e("Calibration", "Failed to load reference waveform: ${e.message}")
+            waveformView.clearReferenceWaveform() // Clear waveform if loading fails
+        }
+    }
+    
     private fun startListening() {
         if (isListening) return
         
@@ -216,6 +233,7 @@ class CalibrationActivity : AppCompatActivity() {
         }
         
         isListening = true
+        waveformView.setListening(true)
         updateUI()
         
         detectionThread = thread {
@@ -233,19 +251,28 @@ class CalibrationActivity : AppCompatActivity() {
                 
                 Log.d("Calibration", "Started audio calibration listening")
                 
+                var lastUpdateTime = 0L
+                val updateInterval = 200L // Update every 200ms instead of 100ms
+                
                 while (isListening) {
                     val read = audioRecord?.read(buffer, 0, buffer.size) ?: 0
                     if (read > 0) {
-                        val amplitude = buffer.take(read).map { it.toInt().absoluteValue }.average()
-                        val livePcm = buffer.take(read).toShortArray()
-                        
-                        // Update UI on main thread
-                        Handler(Looper.getMainLooper()).post {
-                            updateAmplitudeDisplay(amplitude)
-                            updateFingerprintAnalysis(livePcm)
+                        val currentTime = System.currentTimeMillis()
+                        if (currentTime - lastUpdateTime >= updateInterval) {
+                            val amplitude = buffer.take(read).map { it.toInt().absoluteValue }.average()
+                            val livePcm = buffer.take(read).toShortArray()
+                            
+                            // Update UI on main thread
+                            Handler(Looper.getMainLooper()).post {
+                                updateAmplitudeDisplay(amplitude)
+                                updateFingerprintAnalysis(livePcm)
+                                waveformView.updateAudioData(livePcm)
+                            }
+                            
+                            lastUpdateTime = currentTime
                         }
                     }
-                    Thread.sleep(100) // Update every 100ms
+                    Thread.sleep(50) // Reduced sleep time for more responsive audio reading
                 }
                 
                 audioRecord?.stop()
@@ -264,6 +291,7 @@ class CalibrationActivity : AppCompatActivity() {
     
     private fun stopListening() {
         isListening = false
+        waveformView.setListening(false)
         audioRecord?.stop()
         audioRecord?.release()
         audioRecord = null

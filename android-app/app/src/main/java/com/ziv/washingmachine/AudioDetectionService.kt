@@ -317,10 +317,22 @@ class AudioDetectionService : Service() {
             audioRecord.startRecording()
             Log.d("AudioDetection", "Started audio detection")
 
+            var lastBroadcastTime = 0L
+            val broadcastInterval = 200L // Send audio data every 200ms instead of every read
+
             while (isDetecting) {
                 val read = audioRecord.read(buffer, 0, buffer.size)
                 if (read > 0) {
                     val amplitude = buffer.take(read).map { it.toInt().absoluteValue }.average()
+                    
+                    // Send audio data to MainActivity for waveform visualization (throttled)
+                    val currentTime = System.currentTimeMillis()
+                    if (currentTime - lastBroadcastTime >= broadcastInterval) {
+                        val audioData = buffer.take(read).toShortArray()
+                        sendAudioDataBroadcast(audioData)
+                        lastBroadcastTime = currentTime
+                    }
+                    
                     if (amplitude > amplitudeThreshold) {
                         // Use fingerprinting for detection
                         val livePcm = buffer.take(read).toShortArray()
@@ -352,7 +364,7 @@ class AudioDetectionService : Service() {
                         }
                     }
                 }
-                Thread.sleep(100)
+                Thread.sleep(50) // Reduced sleep time for more responsive audio reading
             }
             audioRecord.stop()
             audioRecord.release()
@@ -521,5 +533,13 @@ class AudioDetectionService : Service() {
             }
         }
         wakeLock = null
+    }
+
+    private fun sendAudioDataBroadcast(audioData: ShortArray) {
+        val intent = Intent(MainActivity.ACTION_AUDIO_DATA).apply {
+            putExtra(MainActivity.EXTRA_AUDIO_DATA, audioData)
+            putExtra(MainActivity.EXTRA_AUDIO_DATA_LENGTH, audioData.size)
+        }
+        sendBroadcast(intent)
     }
 } 

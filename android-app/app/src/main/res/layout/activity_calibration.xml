@@ -63,6 +63,24 @@
             android:textSize="14sp"
             android:layout_marginBottom="16dp" />
 
+        <!-- Live Waveform Visualization -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📊 Live Audio Waveform"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <com.ziv.washingmachine.WaveformView
+            android:id="@+id/waveformView"
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:background="#f0f0f0"
+            android:layout_marginBottom="16dp"
+            android:layerType="hardware"
+            android:hardwareAccelerated="true" />
+
         <!-- Enhanced Fingerprinting Controls -->
         <TextView
             android:layout_width="match_parent"

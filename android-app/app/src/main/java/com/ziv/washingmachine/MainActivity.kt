@@ -27,11 +27,36 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.content.Context.RECEIVER_NOT_EXPORTED
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var micIcon: ImageView
-    private var micAnimator: ObjectAnimator? = null
+    private lateinit var waveformView: WaveformView
+    
+    companion object {
+        const val ACTION_AUDIO_DATA = "com.ziv.washingmachine.AUDIO_DATA"
+        const val EXTRA_AUDIO_DATA = "audio_data"
+        const val EXTRA_AUDIO_DATA_LENGTH = "audio_data_length"
+    }
+    
+    private val audioDataReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_AUDIO_DATA) {
+                val audioDataLength = intent.getIntExtra(EXTRA_AUDIO_DATA_LENGTH, 0)
+                if (audioDataLength > 0) {
+                    val audioData = ShortArray(audioDataLength)
+                    intent.getShortArrayExtra(EXTRA_AUDIO_DATA)?.let { data ->
+                        data.copyInto(audioData, 0, 0, minOf(data.size, audioDataLength))
+                        waveformView.updateAudioData(audioData)
+                        waveformView.setListening(true)
+                    }
+                }
+            }
+        }
+    }
     
     // Server configuration - now uses dynamic settings
     private fun getServerUrl(): String = SettingsActivity.getServerUrl(this)
@@ -67,15 +92,18 @@ class MainActivity : AppCompatActivity() {
         supportActionBar?.setDisplayShowHomeEnabled(false)
         supportActionBar?.setDisplayShowTitleEnabled(true)
 
-        micIcon = findViewById(R.id.micIcon)
+        waveformView = findViewById(R.id.waveformView)
         val serverStatusText = findViewById<TextView>(R.id.serverStatusText)
         val testServerButton = findViewById<Button>(R.id.testServerButton)
         val calibrationButton = findViewById<Button>(R.id.calibrationButton)
         val settingsButton = findViewById<Button>(R.id.settingsButton)
         val exitAppButton = findViewById<ImageButton>(R.id.exitAppButton)
 
-        // Start microphone animation
-        startMicrophoneAnimation()
+        // Start pulse animation for waveform
+        waveformView.startPulseAnimation()
+        
+        // Load reference waveform
+        loadReferenceWaveform()
 
         // Test server connection button
         testServerButton.setOnClickListener {
@@ -122,6 +150,13 @@ class MainActivity : AppCompatActivity() {
         
         // Log which server URL is being used
         Log.d("MainActivity", "Using server URL: ${getServerUrl()}")
+        
+        // Register broadcast receiver for audio data
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            registerReceiver(audioDataReceiver, IntentFilter(ACTION_AUDIO_DATA), Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(audioDataReceiver, IntentFilter(ACTION_AUDIO_DATA))
+        }
     }
 
     override fun onResume() {
@@ -130,38 +165,30 @@ class MainActivity : AppCompatActivity() {
         testServerConnection()
     }
 
-    private fun startMicrophoneAnimation() {
-        // Create a simple scale animation that pulses
-        micAnimator = ObjectAnimator.ofFloat(micIcon, "scaleX", 1.0f, 1.15f, 1.0f).apply {
-            duration = 1500L
-            repeatCount = ValueAnimator.INFINITE
-            interpolator = AccelerateDecelerateInterpolator()
-        }
-
-        // Also animate scaleY
-        val scaleYAnimator = ObjectAnimator.ofFloat(micIcon, "scaleY", 1.0f, 1.15f, 1.0f).apply {
-            duration = 1500L
-            repeatCount = ValueAnimator.INFINITE
-            interpolator = AccelerateDecelerateInterpolator()
-        }
-
-        // Start both animations
-        micAnimator?.start()
-        scaleYAnimator.start()
+    private fun startWaveformAnimation() {
+        waveformView.startPulseAnimation()
     }
 
-    private fun stopMicrophoneAnimation() {
-        micAnimator?.cancel()
-        micAnimator = null
-        // Reset to original state
-        micIcon.scaleX = 1.0f
-        micIcon.scaleY = 1.0f
-        micIcon.alpha = 1.0f
+    private fun stopWaveformAnimation() {
+        waveformView.stopPulseAnimation()
+    }
+
+    private fun loadReferenceWaveform() {
+        try {
+            // Load only completion_tune.m4a as the reference waveform
+            val m4aPcm = AudioUtils.loadAudioResource(this, R.raw.completion_tune)
+            waveformView.setReferenceWaveform(m4aPcm)
+            Log.d("MainActivity", "Reference waveform loaded from completion_tune.m4a")
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to load reference waveform: ${e.message}")
+            waveformView.clearReferenceWaveform() // Clear waveform if loading fails
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        stopMicrophoneAnimation()
+        stopWaveformAnimation()
+        unregisterReceiver(audioDataReceiver)
     }
 
     private fun testServerConnection() {
@@ -254,7 +281,7 @@ class MainActivity : AppCompatActivity() {
         stopService(serviceIntent)
         
         // Stop animations
-        stopMicrophoneAnimation()
+        stopWaveformAnimation()
         
         // Show toast
         Toast.makeText(this, "App closed. Service stopped.", Toast.LENGTH_SHORT).show()
