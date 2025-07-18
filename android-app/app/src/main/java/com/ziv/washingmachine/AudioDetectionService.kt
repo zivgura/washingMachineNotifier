@@ -382,7 +382,8 @@ class AudioDetectionService : Service() {
             if (useHighQualityFingerprinting && referenceHighQualityFingerprint != null) {
                 // Use high-quality fingerprinting with quality assessment
                 val liveEnhancedFingerprint = AudioUtils.generateEnhancedAudioFingerprint(preprocessedLivePcm, sampleRate)
-                comparisonResult = AudioUtils.compareFingerprintsWithQuality(referenceHighQualityFingerprint, liveEnhancedFingerprint)
+                val highQualityFingerprint = referenceHighQualityFingerprint!!
+                comparisonResult = AudioUtils.compareFingerprintsWithQuality(highQualityFingerprint, liveEnhancedFingerprint)
                 similarity = comparisonResult.similarity
                 quality = comparisonResult.quality
                 detectionMethod = "High-Quality"
@@ -418,7 +419,8 @@ class AudioDetectionService : Service() {
             // Log additional diagnostic information
             if (useHighQualityFingerprinting && referenceHighQualityFingerprint != null) {
                 val liveEnhancedFingerprint = AudioUtils.generateEnhancedAudioFingerprint(preprocessedLivePcm, sampleRate)
-                logHighQualityFingerprintDiagnostics(referenceHighQualityFingerprint, liveEnhancedFingerprint, comparisonResult)
+                val highQualityFingerprint = referenceHighQualityFingerprint!!
+                logHighQualityFingerprintDiagnostics(highQualityFingerprint, liveEnhancedFingerprint, comparisonResult)
             } else if (useEnhancedFingerprinting && referenceEnhancedFingerprint != null) {
                 val liveEnhancedFingerprint = AudioUtils.generateEnhancedAudioFingerprint(preprocessedLivePcm, sampleRate)
                 logEnhancedFingerprintDiagnostics(referenceEnhancedFingerprint, liveEnhancedFingerprint)

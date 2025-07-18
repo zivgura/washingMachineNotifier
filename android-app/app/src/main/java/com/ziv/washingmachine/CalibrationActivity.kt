@@ -9,7 +9,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -18,13 +17,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import kotlin.concurrent.thread
 import kotlin.math.absoluteValue
-import kotlin.math.sqrt
-import kotlin.math.log10
-import org.jtransforms.fft.DoubleFFT_1D
-import org.apache.commons.math3.complex.Complex
-import org.apache.commons.math3.transform.FastFourierTransformer
-import org.apache.commons.math3.transform.DftNormalization
-import org.apache.commons.math3.transform.TransformType
+import kotlin.math.abs
 
 class CalibrationActivity : AppCompatActivity() {
     private lateinit var startButton: Button
@@ -306,13 +299,15 @@ class CalibrationActivity : AppCompatActivity() {
             if (useHighQualityFingerprinting && referenceHighQualityFingerprint != null) {
                 // Use high-quality fingerprinting with quality assessment
                 val liveEnhancedFingerprint = AudioUtils.generateEnhancedAudioFingerprint(preprocessedLivePcm, sampleRate)
-                comparisonResult = AudioUtils.compareFingerprintsWithQuality(referenceHighQualityFingerprint, liveEnhancedFingerprint)
+                val highQualityFingerprint = referenceHighQualityFingerprint!!
+                comparisonResult = AudioUtils.compareFingerprintsWithQuality(highQualityFingerprint, liveEnhancedFingerprint)
                 similarity = comparisonResult.similarity
                 quality = comparisonResult.quality
                 detectionMethod = "High-Quality"
             } else if (useEnhancedFingerprinting && referenceEnhancedFingerprint != null) {
                 val liveEnhancedFingerprint = AudioUtils.generateEnhancedAudioFingerprint(preprocessedLivePcm, sampleRate)
-                similarity = AudioUtils.compareEnhancedFingerprints(referenceEnhancedFingerprint, liveEnhancedFingerprint)
+                val enhancedFingerprint = referenceEnhancedFingerprint!!
+                similarity = AudioUtils.compareEnhancedFingerprints(enhancedFingerprint, liveEnhancedFingerprint)
                 detectionMethod = "Enhanced"
             } else {
                 val liveFingerprint = AudioUtils.generateAudioFingerprint(preprocessedLivePcm, sampleRate)
@@ -351,9 +346,10 @@ class CalibrationActivity : AppCompatActivity() {
             
             if (useHighQualityFingerprinting && referenceHighQualityFingerprint != null) {
                 val liveEnhancedFingerprint = AudioUtils.generateEnhancedAudioFingerprint(preprocessedLivePcm, sampleRate)
+                val highQualityFingerprint = referenceHighQualityFingerprint!!
                 
-                if (referenceHighQualityFingerprint.fingerprints.isNotEmpty() && liveEnhancedFingerprint.fingerprints.isNotEmpty()) {
-                    val refFrame = referenceHighQualityFingerprint.fingerprints[0]
+                if (highQualityFingerprint.fingerprints.isNotEmpty() && liveEnhancedFingerprint.fingerprints.isNotEmpty()) {
+                    val refFrame = highQualityFingerprint.fingerprints[0]
                     val liveFrame = liveEnhancedFingerprint.fingerprints[0]
                     
                     val diagnosticInfo = """
@@ -361,7 +357,7 @@ class CalibrationActivity : AppCompatActivity() {
                         🎵 Spectral Centroid: ${String.format("%.1f", refFrame.spectralCentroid)}Hz → ${String.format("%.1f", liveFrame.spectralCentroid)}Hz
                         📈 Spectral Rolloff: ${String.format("%.1f", refFrame.spectralRolloff)}Hz → ${String.format("%.1f", liveFrame.spectralRolloff)}Hz
                         🔄 Spectral Flux: ${String.format("%.3f", refFrame.spectralFlux)} → ${String.format("%.3f", liveFrame.spectralFlux)}
-                        ⚡ Energy Band Diff: ${String.format("%.2f", refFrame.energyBands.zip(liveFrame.energyBands).map { abs(it.first - it.second) }.average())} dB
+                        ⚡ Energy Band Diff: ${String.format("%.2f", refFrame.energyBands.zip(liveFrame.energyBands).map { (first, second) -> kotlin.math.abs(first - second) }.average())} dB
                         🎯 Similarity Score: ${String.format("%.3f", similarity)}
                         🏆 Quality Score: ${String.format("%.3f", quality)}
                         🔧 Detection Method: $detectionMethod
@@ -373,9 +369,10 @@ class CalibrationActivity : AppCompatActivity() {
                 }
             } else if (useEnhancedFingerprinting && referenceEnhancedFingerprint != null) {
                 val liveEnhancedFingerprint = AudioUtils.generateEnhancedAudioFingerprint(preprocessedLivePcm, sampleRate)
+                val enhancedFingerprint = referenceEnhancedFingerprint!!
                 
-                if (referenceEnhancedFingerprint.fingerprints.isNotEmpty() && liveEnhancedFingerprint.fingerprints.isNotEmpty()) {
-                    val refFrame = referenceEnhancedFingerprint.fingerprints[0]
+                if (enhancedFingerprint.fingerprints.isNotEmpty() && liveEnhancedFingerprint.fingerprints.isNotEmpty()) {
+                    val refFrame = enhancedFingerprint.fingerprints[0]
                     val liveFrame = liveEnhancedFingerprint.fingerprints[0]
                     
                     val diagnosticInfo = """
@@ -383,7 +380,7 @@ class CalibrationActivity : AppCompatActivity() {
                         🎵 Spectral Centroid: ${String.format("%.1f", refFrame.spectralCentroid)}Hz → ${String.format("%.1f", liveFrame.spectralCentroid)}Hz
                         📈 Spectral Rolloff: ${String.format("%.1f", refFrame.spectralRolloff)}Hz → ${String.format("%.1f", liveFrame.spectralRolloff)}Hz
                         🔄 Spectral Flux: ${String.format("%.3f", refFrame.spectralFlux)} → ${String.format("%.3f", liveFrame.spectralFlux)}
-                        ⚡ Energy Band Diff: ${String.format("%.2f", refFrame.energyBands.zip(liveFrame.energyBands).map { abs(it.first - it.second) }.average())} dB
+                        ⚡ Energy Band Diff: ${String.format("%.2f", refFrame.energyBands.zip(liveFrame.energyBands).map { (first, second) -> kotlin.math.abs(first - second) }.average())} dB
                         🎯 Similarity Score: ${String.format("%.3f", similarity)}
                         🔧 Detection Method: $detectionMethod
                         ⚙️ Adaptive Threshold: ${if (adaptiveThresholdEnabled) "Enabled" else "Disabled"}

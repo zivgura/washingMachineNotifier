@@ -38,7 +38,7 @@ object AudioUtils {
     private const val ADAPTIVE_THRESHOLD_MULTIPLIER = 1.2
     
     // Multi-format audio support
-    private const val SUPPORTED_AUDIO_FORMATS = listOf("wav", "m4a", "mp3", "aac")
+    private val SUPPORTED_AUDIO_FORMATS = listOf("wav", "m4a", "mp3", "aac")
     
     // Load PCM data from a WAV file in res/raw
     fun loadWavResource(context: Context, resId: Int): ShortArray {
@@ -691,9 +691,9 @@ object AudioUtils {
     
     // Compare spectral features
     private fun compareSpectralFeatures(frame1: EnhancedFingerprintFrame, frame2: EnhancedFingerprintFrame): Double {
-        val centroidDiff = abs(frame1.spectralCentroid - frame2.spectralCentroid) / max(frame1.spectralCentroid, frame2.spectralCentroid, 1.0)
-        val rolloffDiff = abs(frame1.spectralRolloff - frame2.spectralRolloff) / max(frame1.spectralRolloff, frame2.spectralRolloff, 1.0)
-        val fluxDiff = abs(frame1.spectralFlux - frame2.spectralFlux) / max(frame1.spectralFlux, frame2.spectralFlux, 1.0)
+        val centroidDiff = abs(frame1.spectralCentroid - frame2.spectralCentroid) / max(max(frame1.spectralCentroid, frame2.spectralCentroid), 1.0)
+        val rolloffDiff = abs(frame1.spectralRolloff - frame2.spectralRolloff) / max(max(frame1.spectralRolloff, frame2.spectralRolloff), 1.0)
+        val fluxDiff = abs(frame1.spectralFlux - frame2.spectralFlux) / max(max(frame1.spectralFlux, frame2.spectralFlux), 1.0)
         
         val centroidSimilarity = max(0.0, 1.0 - centroidDiff)
         val rolloffSimilarity = max(0.0, 1.0 - rolloffDiff)
@@ -801,8 +801,8 @@ object AudioUtils {
         val frame2 = fingerprint2.fingerprints[0]
         
         // Assess spectral feature consistency
-        val centroidConsistency = 1.0 - min(abs(frame1.spectralCentroid - frame2.spectralCentroid) / max(frame1.spectralCentroid, frame2.spectralCentroid, 1.0), 1.0)
-        val rolloffConsistency = 1.0 - min(abs(frame1.spectralRolloff - frame2.spectralRolloff) / max(frame1.spectralRolloff, frame2.spectralRolloff, 1.0), 1.0)
+        val centroidConsistency = 1.0 - min(abs(frame1.spectralCentroid - frame2.spectralCentroid) / max(max(frame1.spectralCentroid, frame2.spectralCentroid), 1.0), 1.0)
+        val rolloffConsistency = 1.0 - min(abs(frame1.spectralRolloff - frame2.spectralRolloff) / max(max(frame1.spectralRolloff, frame2.spectralRolloff), 1.0), 1.0)
         
         // Assess energy distribution quality
         val energyQuality = assessEnergyDistributionQuality(frame1.energyBands, frame2.energyBands)
